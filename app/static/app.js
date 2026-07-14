@@ -249,7 +249,7 @@ function renderDashboard() {
           <div class="mini-stat"><span>⌁</span><div><strong id="load-count">—</strong><span id="uptime-count">System load</span></div></div>
         </section>
         <div class="result-count" id="result-count"></div><div class="groups" id="groups"></div>
-        <footer class="page-footer"><span>Rogue Dashboard <strong>v0.4.2</strong></span><span>Local-first · Docker-powered</span></footer>
+        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.4.3")}</strong></span><span>Local-first · Docker-powered</span></footer>
       </main>
       ${state.editor ? editorMarkup() : ""}
     </div>`;

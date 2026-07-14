@@ -4,6 +4,8 @@
 
 Rogue Dashboard is one Docker image used in two modes:
 
+Production hosts consume the prebuilt `ghcr.io/rogueassassin/rogue-dashboard` image. They do not need the application source, a Python installation or any frontend toolchain. `docker-compose.build.yaml` is an explicit repository-contributor override and is never required on the media server.
+
 | Service | Network exposure | Responsibility |
 | --- | --- | --- |
 | Dashboard | Host port `7805`, internal port `8080` | UI, authentication, imports, persistence and service monitoring |
@@ -29,7 +31,7 @@ SQLite uses write-ahead logging inside the bind-mounted `data` directory. Admini
 
 Service widget credentials are resolved from `.env` only when a collector runs. Canonical variables use the `RGDASH_*` namespace, with a read-only legacy fallback for a safe transition. The public `/api/widgets` response contains display values, state, timing and configured/missing environment-variable names, but never their values. Results are cached for 25 seconds to avoid excessive polling.
 
-`upgrade.sh` creates a private timestamped backup and preserves the previous container image as a local rollback tag before replacing running containers.
+`upgrade.sh` creates a private timestamped backup and preserves the previous image ID for an automatic local rollback before replacing running containers.
 
 ## Docker boundary
 

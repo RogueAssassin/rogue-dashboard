@@ -1,0 +1,19 @@
+# Developer-only override. Normal installations pull the published GHCR image.
+services:
+  dashboard:
+    image: rogue-dashboard:dev
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RGDASH_VERSION: 0.4.3-dev
+
+  docker-agent:
+    image: rogue-dashboard:dev
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RGDASH_VERSION: 0.4.3-dev

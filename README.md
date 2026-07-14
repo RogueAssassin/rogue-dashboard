@@ -2,7 +2,7 @@
 
 Rogue Dashboard is a self-hosted dashboard built specifically to run as a Docker Compose stack. The host does not need a web-development workspace, package manager, database server or manually installed runtime.
 
-Current release: **0.4.2**
+Current release: **0.4.3**
 
 The application uses one small container image for two isolated services:
 
@@ -36,7 +36,7 @@ The installer:
 5. Creates the persistent `data` and `custom` asset directories.
 6. Safely migrates any legacy environment names to `RGDASH_*`.
 7. Creates or joins `media-net` so service discovery and Nginx proxying are always available.
-8. Builds and starts the two Docker services.
+8. Pulls the published GHCR image and starts the two Docker services.
 
 Open `http://localhost:7805` and follow the setup screen. The supplied legacy configuration ZIP can be selected directly; it imports 5 organised groups, 12 services, 3 branded links and 10 safe environment references. The old Homepage card is omitted.
 
@@ -47,17 +47,17 @@ Do **not** delete the existing `rogue-dashboard` folder. Its `.env`, `data/` and
 From the directory that contains your existing `rogue-dashboard` folder:
 
 ```bash
-unzip -o rogue-dashboard-v0.4.2-proxy-connections.zip
+unzip -o rogue-dashboard-v0.4.3-ghcr-runtime.zip
 cd rogue-dashboard
 chmod +x upgrade.sh
 ./upgrade.sh
 ```
 
-The release ZIP intentionally contains neither `.env` nor `data/`, so extracting it over the existing folder does not overwrite saved information. The upgrade script builds while the current dashboard stays online, backs up `data/`, `.env` and custom assets, migrates legacy environment names, stops Homepage when it owns port 7805, and validates the replacement container. A failed takeover restores the previous dashboard on port 8000 and restarts Homepage.
+The release ZIP intentionally contains neither `.env` nor `data/`, so extracting it over the existing folder does not overwrite saved information. The upgrade script pulls the new image while the current dashboard stays online, backs up `data/`, `.env` and custom assets, migrates legacy environment names, and validates the replacement container. If the health check fails, it retags and restarts the previous image automatically.
 
 Never use `docker compose down -v` for an upgrade. This project currently uses a bind-mounted data directory rather than a named volume, but avoiding `-v` is the safe habit for future releases too.
 
-See [docs/RELEASE_0.4.2.md](docs/RELEASE_0.4.2.md) for the connection and reverse-proxy checklist.
+See [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md) for the GHCR deployment and upgrade checklist.
 
 ## Features included
 
@@ -84,6 +84,7 @@ See [docs/RELEASE_0.4.2.md](docs/RELEASE_0.4.2.md) for the connection and revers
 - Horizontal GitHub → RogueGaming → Thoughtful Comms menu with local icons.
 - Guided live-integration setup from the card editor.
 - No cloud account, analytics, telemetry or subscription service.
+- Versioned multi-architecture GHCR releases for AMD64 and ARM64 hosts.
 
 ## Docker commands
 
@@ -94,14 +95,23 @@ docker compose -f docker-compose.yaml ps
 # Logs
 docker compose -f docker-compose.yaml logs -f
 
-# Rebuild after changing application files
-docker compose -f docker-compose.yaml up -d --build
+# Pull and install the current published image
+docker compose -f docker-compose.yaml pull
+docker compose -f docker-compose.yaml up -d --pull never
 
 # Stop while preserving dashboard data
 docker compose -f docker-compose.yaml down
 ```
 
 The primary Compose file joins `media-net` directly. The old override remains only for compatibility with earlier scripts.
+
+The normal Compose file never builds application code on the server. Repository contributors can test source changes with the explicit development override:
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.build.yaml up -d --build
+```
+
+Set `RGDASH_IMAGE` in `.env` only when you want to pin a version or digest. When it is absent, Compose follows `ghcr.io/rogueassassin/rogue-dashboard:latest`; updates still happen only when `upgrade.sh`, `docker compose pull`, or the media-server updater is run.
 
 ## Data and backups
 
@@ -137,7 +147,7 @@ To add your own files:
 2. Open **Customise → edit the card**.
 3. Enter `/custom/icons/your-icon.svg` in **Icon URL or local path**.
 
-For a local background, copy the image to `custom/backgrounds/`, enter `/custom/backgrounds/your-background.jpg` in Appearance settings, and choose **Custom image**. These files are bind-mounted read-only into the container and persist across image rebuilds.
+For a local background, copy the image to `custom/backgrounds/`, enter `/custom/backgrounds/your-background.jpg` in Appearance settings, and choose **Custom image**. These files are bind-mounted read-only into the container and persist across image upgrades.
 
 ## Connection checks
 
@@ -152,3 +162,14 @@ For Nginx Proxy Manager, create `dash.roguegaming.com.au` with scheme `http`, fo
 The main dashboard does not mount the Docker socket. Only the internal agent receives it, and that agent accepts container listing plus start, stop and restart—not shell execution, image deletion, arbitrary Engine paths or Compose file changes. Requests require a private generated token and Docker actions additionally require an administrator session.
 
 See [docs/SECURITY.md](docs/SECURITY.md) for deployment guidance.
+
+## Publishing a release
+
+The repository contains validation and GHCR publishing workflows. After merging a tested change to `main`, publish a semantic version tag:
+
+```bash
+git tag v0.4.3
+git push origin v0.4.3
+```
+
+GitHub Actions runs the Python tests, builds AMD64 and ARM64 images, and publishes `0.4.3`, `0.4`, and `latest` tags to the repository package.

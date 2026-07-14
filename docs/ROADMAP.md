@@ -46,6 +46,13 @@
 - Nginx Proxy Manager and Cloudflare route doctor for `dash.roguegaming.com.au`.
 - qBittorrent WebUI username/password migration and Radarr key-shape diagnostics.
 
+## 0.4.3 GHCR runtime distribution (delivered)
+
+- Production installs and upgrades pull the public GHCR image instead of building on the server.
+- Separate developer build override keeps source testing explicit.
+- Tag-driven AMD64/ARM64 publishing, CI validation, provenance and SBOM generation.
+- Image rollback, configurable host port, hardened Compose capabilities and runtime version reporting.
+
 ## 0.5 Operations and access
 
 - Optional Uptime Kuma status-page summaries.

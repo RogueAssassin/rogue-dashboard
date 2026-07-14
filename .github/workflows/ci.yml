@@ -1,0 +1,49 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run application tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate Python and shell syntax
+        run: |
+          python -m compileall -q app
+          sh -n install.sh migrate-env.sh upgrade.sh
+
+      - name: Validate production and developer Compose files
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yaml config -q
+          docker compose -f docker-compose.yaml -f docker-compose.build.yaml config -q
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build the container
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: rogue-dashboard:ci
+          build-args: RGDASH_VERSION=ci

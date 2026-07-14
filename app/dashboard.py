@@ -33,7 +33,7 @@ from importer import DEFAULT_DASHBOARD, import_homepage, organize_branded_links,
 from integrations import SUPPORTED_WIDGETS, collect_widget
 
 
-VERSION = "0.4.2"
+VERSION = "0.4.3"
 PORT = int(os.environ.get("PORT", "8080"))
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8081"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -573,6 +573,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             username = self.username()
             self.json_response(
                 {
+                    "version": VERSION,
                     "setupRequired": DB.setup_required(),
                     "authenticated": bool(username),
                     "username": username,

@@ -26,6 +26,8 @@ from integrations import collect_widget
 
 
 class WidgetFixtureHandler(BaseHTTPRequestHandler):
+    requested_paths = []
+
     def log_message(self, *_args):
         return
 
@@ -61,6 +63,7 @@ class WidgetFixtureHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        type(self).requested_paths.append(parsed.path)
         qbit_authorized = "SID=test-session" in self.headers.get("Cookie", "")
         if parsed.path == "/api/v2/transfer/info" and qbit_authorized:
             self.respond({"dl_info_speed": 2_000_000, "up_info_speed": 500_000})
@@ -129,6 +132,7 @@ class RogueDashboardTests(unittest.TestCase):
         self.assertIn("literal password value was discarded", result["warnings"][0])
 
     def test_live_service_widget_collectors_keep_secrets_server_side(self):
+        WidgetFixtureHandler.requested_paths = []
         server = ThreadingHTTPServer(("127.0.0.1", 0), WidgetFixtureHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -167,6 +171,7 @@ class RogueDashboardTests(unittest.TestCase):
                 serialized = json.dumps(result)
                 for secret in values.values():
                     self.assertNotIn(secret, serialized)
+            self.assertEqual(WidgetFixtureHandler.requested_paths.count("/api/v2/torrents/info"), 1)
         finally:
             os.environ.pop("RGDASH_QBITTORRENT_API_KEY", None)
             server.shutdown()
@@ -276,7 +281,9 @@ class RogueDashboardTests(unittest.TestCase):
             base = f"http://127.0.0.1:{server.server_port}"
             try:
                 with urlopen(f"{base}/api/bootstrap") as response:
-                    self.assertTrue(json.load(response)["setupRequired"])
+                    bootstrap = json.load(response)
+                    self.assertTrue(bootstrap["setupRequired"])
+                    self.assertEqual(bootstrap["version"], dashboard_app.VERSION)
                 imported = import_homepage(self.files)["dashboard"]
                 request = Request(
                     f"{base}/api/setup",
@@ -347,7 +354,7 @@ class RogueDashboardTests(unittest.TestCase):
                 "TZ=Australia/Melbourne\n"
             )
             result = subprocess.run(
-                [str(ROOT / "migrate-env.sh"), str(env_file)],
+                ["sh", str(ROOT / "migrate-env.sh"), str(env_file)],
                 check=True,
                 capture_output=True,
                 text=True,
