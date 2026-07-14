@@ -1,0 +1,113 @@
+- Media Automation:
+    - qBittorrent:
+        href: http://torrent.roguegaming.com.au
+        siteMonitor: http://qbittorrent:7800
+        icon: qbittorrent.png
+        description: Torrent client
+        widget:
+          type: qbittorrent
+          url: http://qbittorrent:7800
+          username: {{HOMEPAGE_VAR_QBITTORRENT_USERNAME}}
+          password: {{HOMEPAGE_VAR_QBITTORRENT_PASSWORD}}
+
+    - Prowlarr:
+        href: http://indexers.roguegaming.com.au
+        siteMonitor: http://prowlarr:9696
+        icon: prowlarr.png
+        description: Indexer manager
+        widget:
+          type: prowlarr
+          url: http://prowlarr:9696
+          key: {{HOMEPAGE_VAR_PROWLARR_KEY}}
+
+    - Radarr:
+        href: http://movies.roguegaming.com.au
+        siteMonitor: http://radarr:7878
+        icon: radarr.png
+        description: Movies
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: {{HOMEPAGE_VAR_RADARR_KEY}}
+
+    - Sonarr:
+        href: http://tv.roguegaming.com.au
+        siteMonitor: http://sonarr:8989
+        icon: sonarr.png
+        description: TV
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: {{HOMEPAGE_VAR_SONARR_KEY}}
+
+    - Seerr:
+        href: http://requests.roguegaming.com.au
+        siteMonitor: http://seerr:5055
+        icon: seerr.png
+        description: Requests
+
+    - Bazarr:
+        href: http://subtitles.roguegaming.com.au
+        siteMonitor: http://bazarr:6767
+        icon: bazarr.png
+        description: Subtitle management
+        widget:
+          type: bazarr
+          url: http://bazarr:6767
+          key: {{HOMEPAGE_VAR_BAZARR_KEY}}
+
+- Media Insights:
+    - Tautulli:
+        href: http://stats.roguegaming.com.au
+        siteMonitor: http://tautulli:8181
+        icon: tautulli.png
+        description: Plex monitoring
+        widget:
+          type: tautulli
+          url: http://tautulli:8181
+          key: {{HOMEPAGE_VAR_TAUTULLI_KEY}}
+
+- Infrastructure:
+    - Dozzle:
+        href: http://logs.roguegaming.com.au
+        siteMonitor: http://dozzle:8080
+        icon: dozzle.png
+        description: Docker Logs
+
+    - Uptime Kuma:
+        href: http://status.roguegaming.com.au
+        siteMonitor: http://uptime-kuma:3001
+        icon: uptime-kuma.png
+        description: Service monitoring
+
+    - Dockge:
+        href: http://manage.roguegaming.com.au
+        siteMonitor: http://dockge:5001
+        icon: dockge.png
+        description: Docker Compose stack manager
+
+- Network:
+    - Pi-hole:
+        href: https://pihole.roguegaming.com.au
+        siteMonitor: http://192.168.1.199:9442
+        icon: pi-hole.png
+        description: DNS and ad blocking
+        widget:
+          type: pihole
+          url: http://192.168.1.199:9442
+          version: 6
+          key: {{HOMEPAGE_VAR_PIHOLE_KEY}}
+
+    - FlareSolverr:
+        href: http://flaresolverr:8191/
+        siteMonitor: http://flaresolverr:8191/
+        icon: flaresolverr.png
+        description: Cloudflare bypasser
+        statusStyle: dot
+
+- Admin:
+    - Homepage:
+        href: http://dash.roguegaming.com.au
+        siteMonitor: http://homepage:3000
+        icon: homepage.png
+        description: Main dashboard

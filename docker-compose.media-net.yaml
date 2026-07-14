@@ -1,0 +1,12 @@
+# This optional override lets private imported service names such as
+# http://radarr:7878 resolve on the existing WSL media stack.
+services:
+  dashboard:
+    networks:
+      - dashboard
+      - media-net
+
+networks:
+  media-net:
+    external: true
+    name: ${MEDIA_NETWORK:-media-net}

@@ -1,0 +1,18 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/bookmarks
+
+- Developer:
+    - Github/RogueAssassin:
+        - abbr: GH
+          href: https://github.com/RogueAssassin
+
+- Website RGA:
+    - RogueGamingAU/NZ:
+        - abbr: RGA
+          href: https://roguegaming.com.au/
+
+- Website TC:
+    - Thoughtful Comms:
+        - abbr: TC
+          href: https://thoughtfulcomms.com.au/

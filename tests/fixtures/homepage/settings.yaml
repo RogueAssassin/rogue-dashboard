@@ -1,0 +1,29 @@
+title: RogueGaming Media Dashboard
+theme: dark
+color: slate
+headerStyle: boxedWidgets
+fullWidth: true
+useEqualHeights: true
+maxGroupColumns: 4
+disableCollapse: false
+
+layout:
+  Media Automation:
+    style: row
+    columns: 3
+
+  Media Insights:
+    style: row
+    columns: 2
+
+  Infrastructure:
+    style: row
+    columns: 3
+
+  Network:
+    style: row
+    columns: 2
+
+  Admin:
+    style: row
+    columns: 2

@@ -1,0 +1,73 @@
+services:
+  dashboard:
+    image: rogue-dashboard:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rogue-dashboard
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 8080
+      DATA_DIR: /data
+      STATIC_DIR: /app/static
+      CUSTOM_DIR: /custom
+      DOCKER_AGENT_URL: http://docker-agent:8081
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      - "7805:8080"
+    volumes:
+      - ./data:/data
+      - ./custom:/custom:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      dashboard:
+      media-net:
+        aliases:
+          - rogue-dashboard
+          - dash
+    depends_on:
+      docker-agent:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      rogue.dashboard.protected: "true"
+
+  docker-agent:
+    image: rogue-dashboard:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rogue-dashboard-agent
+    restart: unless-stopped
+    command: ["agent"]
+    environment:
+      AGENT_PORT: 8081
+      DOCKER_SOCKET: /var/run/docker.sock
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN}
+      HEALTHCHECK_URL: http://127.0.0.1:8081/health
+    user: "${PUID:-1000}:${DOCKER_GID:-999}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - dashboard
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      rogue.dashboard.protected: "true"
+
+networks:
+  dashboard:
+    name: rogue-dashboard
+  media-net:
+    external: true
+    name: ${MEDIA_NETWORK:-media-net}
