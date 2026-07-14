@@ -20,7 +20,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 
 
-USER_AGENT = "Rogue-Dashboard/0.4.3"
+USER_AGENT = "Rogue-Dashboard/0.5.0"
 MAX_RESPONSE = 2_000_000
 LARGE_LIBRARY_RESPONSE = 24_000_000
 TIMEOUT = 6
@@ -125,10 +125,6 @@ def _environment_value(ref: str) -> str:
     canonical_value = os.environ.get(canonical, "")
     if canonical_value:
         return canonical_value
-    if canonical == "RGDASH_QBITTORRENT_PASSWORD":
-        legacy_qbit_value = os.environ.get("RGDASH_QBITTORRENT_API_KEY", "")
-        if legacy_qbit_value:
-            return legacy_qbit_value
     return os.environ.get(_legacy_ref(canonical), "")
 
 
@@ -231,12 +227,30 @@ def _prowlarr(widget: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
-def _qbittorrent(widget: dict[str, Any]) -> list[dict[str, str]]:
-    base = _base_url(widget.get("url"))
+def _qbittorrent_metrics(
+    base: str,
+    *,
+    opener: Any = None,
+    headers: dict[str, str] | None = None,
+) -> list[dict[str, str]]:
+    transfer = _json_request(f"{base}/api/v2/transfer/info", opener=opener, headers=headers)
+    torrents = _json_request(f"{base}/api/v2/torrents/info", opener=opener, headers=headers)
+    torrents = torrents if isinstance(torrents, list) else []
+    leech_states = {"downloading", "forcedDL", "metaDL", "stalledDL", "checkingDL", "allocating"}
+    seed_states = {"uploading", "forcedUP", "stalledUP", "checkingUP"}
+    leeching = sum(item.get("state") in leech_states for item in torrents if isinstance(item, dict))
+    seeding = sum(item.get("state") in seed_states for item in torrents if isinstance(item, dict))
+    return [
+        _metric("Download", _format_bytes(_nested(transfer, "dl_info_speed"), rate=True)),
+        _metric("Upload", _format_bytes(_nested(transfer, "up_info_speed"), rate=True)),
+        _metric("Leech", leeching),
+        _metric("Seed", seeding),
+    ]
+
+
+def _qbittorrent_cookie_metrics(widget: dict[str, Any], base: str) -> list[dict[str, str]]:
     username = _value(widget, "username", "user")
     password = _value(widget, "password", "pass")
-    if not username and os.environ.get("RGDASH_QBITTORRENT_API_KEY", "") and password:
-        username = "admin"
     if not username or not password:
         raise MissingSecrets
     opener = build_opener(HTTPCookieProcessor(CookieJar()))
@@ -256,19 +270,47 @@ def _qbittorrent(widget: dict[str, Any]) -> list[dict[str, str]]:
         raise
     if login.lower() != "ok.":
         raise PermissionError("qBittorrent rejected the WebUI username or password.")
-    transfer = _json_request(f"{base}/api/v2/transfer/info", opener=opener, headers=common_headers)
-    torrents = _json_request(f"{base}/api/v2/torrents/info", opener=opener, headers=common_headers)
-    torrents = torrents if isinstance(torrents, list) else []
-    leech_states = {"downloading", "forcedDL", "metaDL", "stalledDL", "checkingDL", "allocating"}
-    seed_states = {"uploading", "forcedUP", "stalledUP", "checkingUP"}
-    leeching = sum(item.get("state") in leech_states for item in torrents if isinstance(item, dict))
-    seeding = sum(item.get("state") in seed_states for item in torrents if isinstance(item, dict))
-    return [
-        _metric("Download", _format_bytes(_nested(transfer, "dl_info_speed"), rate=True)),
-        _metric("Upload", _format_bytes(_nested(transfer, "up_info_speed"), rate=True)),
-        _metric("Leech", leeching),
-        _metric("Seed", seeding),
-    ]
+    return _qbittorrent_metrics(base, opener=opener, headers=common_headers)
+
+
+def _qbittorrent(widget: dict[str, Any]) -> dict[str, Any]:
+    base = _base_url(widget.get("url"))
+    api_key = _value(widget, "api_key", "apikey")
+    username = _value(widget, "username", "user")
+    password = _value(widget, "password", "pass")
+    fallback_ready = bool(username and password)
+
+    if api_key:
+        api_error: Exception | None = None
+        if not re.fullmatch(r"qbt_[A-Za-z0-9]{28}", api_key):
+            api_error = ValueError("qBittorrent API keys must start with qbt_ followed by 28 letters or numbers.")
+        else:
+            try:
+                return {
+                    "metrics": _qbittorrent_metrics(base, headers={"Authorization": f"Bearer {api_key}"}),
+                    "authentication": "api_key",
+                    "message": "Authenticated with the qBittorrent 5.2+ API key.",
+                }
+            except HTTPError as error:
+                if error.code not in (401, 403):
+                    raise
+                api_error = PermissionError("qBittorrent rejected the API key.")
+        if fallback_ready:
+            return {
+                "metrics": _qbittorrent_cookie_metrics(widget, base),
+                "authentication": "username_password_fallback",
+                "message": "The API key was rejected; connected with the WebUI username/password fallback.",
+            }
+        if api_error:
+            raise api_error
+
+    if fallback_ready:
+        return {
+            "metrics": _qbittorrent_cookie_metrics(widget, base),
+            "authentication": "username_password",
+            "message": "Authenticated with the WebUI username/password fallback.",
+        }
+    raise MissingSecrets
 
 
 def _tautulli(widget: dict[str, Any]) -> list[dict[str, str]]:
@@ -357,7 +399,7 @@ class MissingSecrets(Exception):
     pass
 
 
-COLLECTORS: dict[str, Callable[[dict[str, Any]], list[dict[str, str]]]] = {
+COLLECTORS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "bazarr": _bazarr,
     "pihole": _pihole,
     "prowlarr": _prowlarr,
@@ -415,21 +457,39 @@ def collect_widget(item: dict[str, Any]) -> dict[str, Any]:
     result["environment"] = [{"name": ref, "loaded": bool(_environment_value(ref))} for ref in refs]
     missing = [_canonical_ref(ref) for ref in refs if not _environment_value(ref)]
     if kind == "qbittorrent":
-        legacy_password = bool(os.environ.get("RGDASH_QBITTORRENT_API_KEY", ""))
-        has_username = bool(_value(widget, "username", "user") or legacy_password)
+        has_api_key = bool(_value(widget, "api_key", "apikey"))
+        has_username = bool(_value(widget, "username", "user"))
         has_password = bool(_value(widget, "password", "pass"))
-        credentials_ready = has_username and has_password
+        credentials_ready = has_api_key or (has_username and has_password)
+        if not credentials_ready:
+            missing = ["RGDASH_QBITTORRENT_API_KEY"]
+            if not has_username:
+                missing.append("RGDASH_QBITTORRENT_USERNAME")
+            if not has_password:
+                missing.append("RGDASH_QBITTORRENT_PASSWORD")
     else:
         credentials_ready = not missing
     if not credentials_ready:
+        configuration_message = (
+            "Set RGDASH_QBITTORRENT_API_KEY for qBittorrent 5.2+, or set both WebUI username/password values."
+            if kind == "qbittorrent"
+            else "Add the missing environment values to .env, then restart the dashboard."
+        )
         result.update(
             state="configuration_required",
-            message="Add the missing environment values to .env, then restart the dashboard.",
+            message=configuration_message,
             missingRefs=missing or refs,
         )
         return result
     try:
-        metrics = COLLECTORS[kind](widget)
+        collected = COLLECTORS[kind](widget)
+        if isinstance(collected, dict):
+            metrics = collected.get("metrics", [])
+            for key in ("authentication", "message"):
+                if isinstance(collected.get(key), str):
+                    result[key] = collected[key]
+        else:
+            metrics = collected
         result.update(state="ok", metrics=metrics[:4], latencyMs=round((time.monotonic() - started) * 1000))
     except MissingSecrets:
         result.update(

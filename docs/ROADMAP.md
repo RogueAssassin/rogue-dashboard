@@ -1,67 +1,32 @@
 # Roadmap
 
-## 0.2 Docker-native foundation
+The roadmap describes direction rather than a promise of delivery dates. Security, migration safety, Docker-native operation and WSL compatibility remain release gates.
 
-- First-run visual setup.
-- Homepage ZIP/YAML migration.
-- Responsive services and bookmarks.
-- Local authentication and persistence.
-- Health checks and system overview.
-- Restricted Docker discovery, start, stop and restart.
-- Themes, drag-and-drop editing and backup export.
+## Delivered foundation
 
-## 0.3 Service integrations (delivered)
+- First-run browser setup with local administrator authentication.
+- Responsive service and bookmark groups with search and drag-and-drop editing.
+- Homepage ZIP and YAML import with secret-safe environment references.
+- SQLite persistence, JSON layout exports and backup-first upgrades.
+- Restricted Docker discovery plus confirmed start, stop and restart actions.
+- Six themes, adjustable dual accents, background effects, glow, density and custom assets.
+- Live qBittorrent, Prowlarr, Radarr, Sonarr, Seerr, Bazarr, Tautulli and Pi-hole metrics.
+- Connection diagnostics for Docker DNS, ports, authentication and environment readiness.
+- Pull-based GHCR deployment for AMD64 and ARM64 with a separate contributor build override.
 
-- qBittorrent activity and transfer statistics.
-- Radarr and Sonarr queue and health summaries.
-- Prowlarr indexer health.
-- Bazarr subtitle status.
-- Tautulli streams and Plex activity.
-- Pi-hole blocking and query statistics.
-- Guided secret validation without storing raw credentials in dashboard exports.
+## Next: operations visibility
 
-## 0.4 Neon operations (delivered)
-
-- Thoughtful Neon default and five additional theme presets.
-- Adjustable background effect, dual accents, glow, card opacity and density.
-- Homepage-style compact metric blocks and per-card response time.
-- Expanded Prowlarr, Radarr, Sonarr and Pi-hole defaults plus Seerr support.
-- Local icon registry and persistent custom asset mount.
-- Combined container/API Connection Centre with manual retesting.
-- Automatic, backup-first `HOMEPAGE_*` to `RGDASH_*` environment migration.
-
-## 0.4.1 Port takeover and connections (delivered)
-
-- Port 7805 takeover with Homepage shutdown and rollback handling.
-- Persistent `media-net` startup through the media-server scripts.
-- qBittorrent WebUI cookie authentication with environment-source diagnostics.
-- Larger Radarr library responses and clearer DNS, port and credential errors.
-- Functional Customise tabs, group reordering and maximum-column controls.
-- Branded horizontal links menu and automatic removal of the old Homepage card.
-
-## 0.4.2 Proxy and connection repair (delivered)
-
-- Primary Compose attachment to `media-net` for Nginx and service DNS.
-- Forwarded-HTTPS detection, Secure cookies and optional host allowlisting.
-- Nginx Proxy Manager and Cloudflare route doctor for `dash.roguegaming.com.au`.
-- qBittorrent WebUI username/password migration and Radarr key-shape diagnostics.
-
-## 0.4.3 GHCR runtime distribution (delivered)
-
-- Production installs and upgrades pull the public GHCR image instead of building on the server.
-- Separate developer build override keeps source testing explicit.
-- Tag-driven AMD64/ARM64 publishing, CI validation, provenance and SBOM generation.
-- Image rollback, configurable host port, hardened Compose capabilities and runtime version reporting.
-
-## 0.5 Operations and access
-
+- Container CPU, memory, storage and network history with bounded local retention.
 - Optional Uptime Kuma status-page summaries.
-- Multiple Docker host agents and per-host capacity.
-- Multiple dashboard pages and access roles.
-- Container CPU, memory and network history with bounded retention.
+- Per-widget refresh intervals, metric selection and clearer last-updated state.
 - Action audit history and administrator session management.
-- Personal favourites and safe embedded views for services that permit framing.
-- Reverse-proxy and optional identity-provider authentication.
-- Per-widget refresh, metric selection and update visibility.
+- Multiple Docker agent hosts with per-host availability and capacity.
 
-WSL compatibility, data migration and rollback documentation remain release gates for every milestone.
+## Later: spaces and access
+
+- Multiple dashboard pages.
+- Role-aware access to pages, groups and Docker actions.
+- Personal favourites and per-user presentation settings.
+- Optional identity-provider authentication behind supported reverse proxies.
+- Safe embedded views for applications that explicitly permit framing.
+

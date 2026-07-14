@@ -1,5 +1,5 @@
-# This optional override lets private imported service names such as
-# http://radarr:7878 resolve on the existing WSL media stack.
+# Compatibility override for installations that used an older Compose file.
+# New installations already attach the dashboard to the shared media network.
 services:
   dashboard:
     networks:

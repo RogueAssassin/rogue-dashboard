@@ -1,10 +1,33 @@
-# Custom Rogue Dashboard assets
+# Your custom artwork
 
-This directory is mounted read-only into the dashboard container and survives image rebuilds.
+Rogue Dashboard serves this folder at `/custom/` and mounts it read-only inside the container. Files placed here stay on the host when images are upgraded.
 
-- Put service icons in `custom/icons/` and use `/custom/icons/your-icon.svg` in the card editor.
-- Put backgrounds in `custom/backgrounds/` and use `/custom/backgrounds/your-background.jpg` in Appearance settings.
-- Recommended icon format: square SVG or transparent PNG, ideally 128×128 pixels or larger.
-- Recommended background format: WebP or JPEG around 1920×1080 pixels.
+## Add a service icon
 
-Files are served only by the local dashboard under `/custom/`; no external icon service or account is required.
+1. Copy a square SVG, PNG or WebP file into `custom/icons/`.
+2. Open **Customise** and edit the service card.
+3. Set **Icon URL or local path** to `/custom/icons/my-service.svg`.
+4. Save the dashboard.
+
+SVG is recommended for sharp results at every display size. For raster artwork, use a transparent square image of at least 128×128 pixels. Keep filenames simple, lowercase and free of spaces.
+
+## Add a background
+
+1. Copy a WebP, JPEG or PNG file into `custom/backgrounds/`.
+2. Open **Customise → Appearance**.
+3. Enter `/custom/backgrounds/my-background.webp` in the background field.
+4. Choose **Custom image** and save.
+
+A 1920×1080 WebP image is a good balance between quality and load time.
+
+## Container permissions
+
+If a file does not appear, confirm that it is readable by the user configured as `PUID` and `PGID` in `.env`:
+
+```bash
+chmod 755 custom custom/icons custom/backgrounds
+chmod 644 custom/icons/* custom/backgrounds/*
+```
+
+Do not store passwords, API keys or private configuration in this directory. Everything under `/custom/` is available to authenticated and unauthenticated dashboard visitors.
+

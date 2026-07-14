@@ -163,6 +163,10 @@ a { color: inherit; }
 .field input, .field select, .group-editor-row input, .group-editor-row select { width: 100%; height: 42px; border: 1px solid var(--border); border-radius: 11px; outline: 0; padding: 0 11px; background: var(--surface-soft); color: var(--text); font-size: .82rem; }
 .field input:focus, .field select:focus, .group-editor-row input:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .field select, .group-editor-row select { cursor: pointer; }
+.editor-panel select, .modal select { color-scheme: dark; background-color: var(--surface-strong); color: var(--text); }
+.editor-panel select option, .editor-panel select optgroup, .modal select option, .modal select optgroup { background: #151525; color: #f6f7fb; }
+.theme-light .editor-panel select, .theme-light .modal select { color-scheme: light; background-color: #fff; color: #172033; }
+.theme-light .editor-panel select option, .theme-light .editor-panel select optgroup, .theme-light .modal select option, .theme-light .modal select optgroup { background: #fff; color: #172033; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-grid .full { grid-column: 1 / -1; }
 .color-field > div { display: grid; grid-template-columns: 46px 1fr; gap: 8px; }

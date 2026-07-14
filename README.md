@@ -1,175 +1,191 @@
+<div align="center">
+
+![Rogue Dashboard — your colourful Docker home base](docs/assets/hero.svg)
+
 # Rogue Dashboard
 
-Rogue Dashboard is a self-hosted dashboard built specifically to run as a Docker Compose stack. The host does not need a web-development workspace, package manager, database server or manually installed runtime.
+**A colourful, local-first command centre for the containers you run.**
 
-Current release: **0.4.3**
+[![Release](https://img.shields.io/badge/release-0.5.0-9b5cff?style=for-the-badge)](https://github.com/RogueAssassin/rogue-dashboard)
+[![Container](https://img.shields.io/badge/GHCR-ready-00d9ff?style=for-the-badge&logo=docker&logoColor=white)](https://github.com/RogueAssassin/rogue-dashboard/pkgs/container/rogue-dashboard)
+[![No Node](https://img.shields.io/badge/frontend-no_build_step-ff2bd6?style=for-the-badge)](#why-rogue-dashboard)
+[![Platforms](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-41d99b?style=for-the-badge)](#install-from-scratch)
 
-The application uses one small container image for two isolated services:
+Version **0.5.0** · Docker Compose deployment · Browser-based setup
 
-- `dashboard` serves the browser interface, authentication, legacy configuration importer, SQLite data and health checks.
-- `docker-agent` is an internal-only companion that exposes an allow-listed set of Docker operations.
+</div>
 
-## Current port
+Rogue Dashboard turns a Docker host into an approachable control panel. It brings service links, live application metrics, container health, safe lifecycle controls, themes, search and configuration into one responsive page—without requiring Node.js, TypeScript, pnpm or a frontend build on your server.
 
-Rogue Dashboard now owns the former Homepage slot on host port **7805**:
+## Why Rogue Dashboard?
 
-```yaml
-ports:
-  - "7805:8080"
-```
+| | What you get |
+| --- | --- |
+| 🎨 | **Make it yours** — six colour presets, two accent colours, neon glow, card opacity, density and custom backgrounds. |
+| 📦 | **See Docker clearly** — discover containers, inspect their state and create cards from running services. |
+| ⚡ | **Live service data** — metrics for qBittorrent, Radarr, Sonarr, Prowlarr, Seerr, Bazarr, Tautulli and Pi-hole. |
+| 🧩 | **Edit in the browser** — add cards, rearrange groups, change columns and preview appearance changes live. |
+| 🛡️ | **A safer Docker boundary** — the web app never mounts the Docker socket; a private, restricted agent handles approved operations. |
+| 🚚 | **Simple upgrades** — pull a prebuilt GHCR image while keeping the database, settings and custom assets on the host. |
+| 🧭 | **Bring an existing layout** — optionally import Homepage YAML files or a configuration ZIP during setup. |
+| 📴 | **Local-first** — no cloud account, analytics service, subscription or remote icon dependency is required. |
 
-Change only the left-hand number if a different host port is needed, then recreate the dashboard service.
+## Install from scratch
 
-## Install on WSL Docker
+### Requirements
+
+- Docker Engine or Docker Desktop
+- Docker Compose v2 (`docker compose`)
+- Git for the recommended installation method
+- Linux, WSL 2, or another Docker host that supports bind mounts
+
+### 1. Download the deployment files
 
 ```bash
-chmod +x install.sh
+git clone https://github.com/RogueAssassin/rogue-dashboard.git
+cd rogue-dashboard
+```
+
+### 2. Run the installer
+
+```bash
+chmod +x install.sh upgrade.sh migrate-env.sh
 ./install.sh
 ```
 
-The installer:
+The installer creates `.env`, detects your user and Docker socket group IDs, generates the private agent token, prepares persistent folders, creates the shared Docker network, pulls the public image from GHCR and waits for a healthy start.
 
-1. Confirms Docker and Docker Compose are available.
-2. Creates the local `.env` file.
-3. Detects the WSL user and Docker socket group IDs.
-4. Generates a private token between the dashboard and Docker agent.
-5. Creates the persistent `data` and `custom` asset directories.
-6. Safely migrates any legacy environment names to `RGDASH_*`.
-7. Creates or joins `media-net` so service discovery and Nginx proxying are always available.
-8. Pulls the published GHCR image and starts the two Docker services.
+### 3. Open the dashboard
 
-Open `http://localhost:7805` and follow the setup screen. The supplied legacy configuration ZIP can be selected directly; it imports 5 organised groups, 12 services, 3 branded links and 10 safe environment references. The old Homepage card is omitted.
+Visit [http://localhost:7805](http://localhost:7805), create the first local administrator and either start with a blank dashboard or import an existing Homepage configuration.
 
-## Upgrade an existing installation
+> Rogue Dashboard defaults to host port `7805`. Change `RGDASH_PORT` in `.env`, then run `docker compose up -d` to use another port.
 
-Do **not** delete the existing `rogue-dashboard` folder. Its `.env`, `data/` and `custom/` content hold your credentials, administrator account, imported layout and local assets.
+## What Docker starts
 
-From the directory that contains your existing `rogue-dashboard` folder:
+```mermaid
+flowchart LR
+    Browser["Browser :7805"] --> Dashboard["Dashboard :8080"]
+    Dashboard --> Data["./data + ./custom"]
+    Dashboard --> Agent["Restricted Docker agent"]
+    Agent --> Socket["Docker socket"]
+    Dashboard --> Services["Shared Docker network"]
+```
+
+The same prebuilt image runs in two modes:
+
+- `dashboard` serves the interface, login, imports, SQLite data, health checks and integrations.
+- `docker-agent` is internal-only and permits container listing plus start, stop and restart operations. It has no published host port.
+
+## Day-to-day commands
 
 ```bash
-unzip -o rogue-dashboard-v0.4.3-ghcr-runtime.zip
-cd rogue-dashboard
-chmod +x upgrade.sh
-./upgrade.sh
+# View status
+docker compose ps
+
+# Follow logs
+docker compose logs -f
+
+# Restart without deleting saved data
+docker compose restart
+
+# Stop the stack while preserving data
+docker compose down
 ```
 
-The release ZIP intentionally contains neither `.env` nor `data/`, so extracting it over the existing folder does not overwrite saved information. The upgrade script pulls the new image while the current dashboard stays online, backs up `data/`, `.env` and custom assets, migrates legacy environment names, and validates the replacement container. If the health check fails, it retags and restarts the previous image automatically.
+Normal installations pull `ghcr.io/rogueassassin/rogue-dashboard:latest`; they do not build application code. To pin this release, add this to `.env`:
 
-Never use `docker compose down -v` for an upgrade. This project currently uses a bind-mounted data directory rather than a named volume, but avoiding `-v` is the safe habit for future releases too.
-
-See [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md) for the GHCR deployment and upgrade checklist.
-
-## Features included
-
-- Visual first-run setup and legacy ZIP/YAML import.
-- Add, edit, delete and drag service or bookmark cards.
-- Rename groups and choose responsive column counts.
-- Search, themes, colour and optional background customisation.
-- Local administrator authentication and SQLite persistence.
-- Service health checks from inside the Docker network.
-- Docker container discovery and running-container counts.
-- Confirmed start, stop and restart controls for administrators.
-- JSON dashboard backup export.
-- Live qBittorrent, Prowlarr, Radarr, Sonarr, Seerr, Bazarr, Tautulli and Pi-hole metrics.
-- Widget readiness diagnostics that identify missing environment references without exposing their values.
-- Responsive desktop, tablet and mobile interface.
-- Thoughtful Neon default plus Midnight, Graphite, Ocean, Ember and Daylight presets.
-- Neon grid, aurora, mesh, solid and custom-image backgrounds with adjustable glow and opacity.
-- Compact operations layout with full metric blocks and response-time badges.
-- Local bundled service icons and a persistent custom icon/background folder.
-- Connection Centre covering container reachability, API authentication and missing configuration.
-- Verified `.env` loading indicators for each integration without displaying values.
-- qBittorrent WebUI username/password authentication with the required session cookie.
-- Working Appearance, Layout, Connect and Docker customisation tabs.
-- Horizontal GitHub → RogueGaming → Thoughtful Comms menu with local icons.
-- Guided live-integration setup from the card editor.
-- No cloud account, analytics, telemetry or subscription service.
-- Versioned multi-architecture GHCR releases for AMD64 and ARM64 hosts.
-
-## Docker commands
-
-```bash
-# Status
-docker compose -f docker-compose.yaml ps
-
-# Logs
-docker compose -f docker-compose.yaml logs -f
-
-# Pull and install the current published image
-docker compose -f docker-compose.yaml pull
-docker compose -f docker-compose.yaml up -d --pull never
-
-# Stop while preserving dashboard data
-docker compose -f docker-compose.yaml down
+```dotenv
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.5.0
 ```
 
-The primary Compose file joins `media-net` directly. The old override remains only for compatibility with earlier scripts.
+## Connect live service widgets
 
-The normal Compose file never builds application code on the server. Repository contributors can test source changes with the explicit development override:
+Keep API credentials in `.env`, never in card exports. Restart the dashboard after editing the file.
 
-```bash
-docker compose -f docker-compose.yaml -f docker-compose.build.yaml up -d --build
-```
+```dotenv
+# qBittorrent 5.2+ uses the API key first.
+RGDASH_QBITTORRENT_API_KEY=qbt_your_generated_key
 
-Set `RGDASH_IMAGE` in `.env` only when you want to pin a version or digest. When it is absent, Compose follows `ghcr.io/rogueassassin/rogue-dashboard:latest`; updates still happen only when `upgrade.sh`, `docker compose pull`, or the media-server updater is run.
-
-## Data and backups
-
-Persistent application data is stored under:
-
-```text
-./data/rogue-dashboard.sqlite
-```
-
-`upgrade.sh` automatically backs up the complete `data` directory, `.env` and existing `custom` assets under `./backups/YYYYMMDD-HHMMSS/` while the stack is stopped. Dashboard layouts can also be exported as JSON from the visual editor.
-
-## Credentials
-
-Imported literal passwords, tokens and API keys are discarded. Rogue Dashboard 0.4 uses `RGDASH_*` environment names while the real values remain in `.env`. During upgrade, `migrate-env.sh` converts `HOMEPAGE_VAR_*` and other `HOMEPAGE_*` entries without printing or changing their values, and keeps `.env.pre-rgdash` as a private fallback copy. Never commit or share either file.
-
-Examples:
-
-```text
+# Optional automatic fallback for older servers or a rejected API key.
 RGDASH_QBITTORRENT_USERNAME=
 RGDASH_QBITTORRENT_PASSWORD=
+
+RGDASH_PROWLARR_KEY=
 RGDASH_RADARR_KEY=
+RGDASH_SONARR_KEY=
 RGDASH_SEERR_KEY=
+RGDASH_BAZARR_KEY=
+RGDASH_TAUTULLI_KEY=
 RGDASH_PIHOLE_KEY=
 ```
 
-## Local icons and backgrounds
+Then open **Customise → Connect → Test now**. The connection centre reports DNS reachability, port access, API authentication, response time and the names of missing environment variables. Secret values are never sent to the browser.
 
-Docker has no standard image-label field that reliably provides an application logo. Rogue Dashboard therefore includes local icons for the recognised services and falls back to initials for unknown services.
+Service URLs should normally use Docker DNS, such as `http://radarr:7878`, rather than a public proxy address. The dashboard and target service must share a Docker network.
 
-To add your own files:
+## Themes, icons and backgrounds
 
-1. Copy an SVG or transparent PNG to `custom/icons/`.
-2. Open **Customise → edit the card**.
-3. Enter `/custom/icons/your-icon.svg` in **Icon URL or local path**.
+Open **Customise → Appearance** to choose Electric Neon, Midnight, Graphite, Ocean, Ember or Daylight. You can tune both neon colours, glow strength, surface opacity, density and the background effect.
 
-For a local background, copy the image to `custom/backgrounds/`, enter `/custom/backgrounds/your-background.jpg` in Appearance settings, and choose **Custom image**. These files are bind-mounted read-only into the container and persist across image upgrades.
+Bundled service icons work offline. Unknown services receive an initials fallback. For your own artwork:
 
-## Connection checks
+1. Copy an SVG, PNG or WebP file into `custom/icons/`.
+2. Edit a card and enter `/custom/icons/my-service.svg` in **Icon URL or local path**.
+3. For a background, place the file in `custom/backgrounds/`, enter `/custom/backgrounds/my-background.webp` under Appearance and select **Custom image**.
 
-Open **Admin → Customise → Connect**, then select **Test now**. Each integration reports private reachability, API authentication and the exact `RGDASH_*` names loaded from `.env`—never their values. DNS errors specifically identify a missing `media-net` attachment, while refused-port and credential errors remain separate.
+The `custom` directory is mounted read-only inside the app and survives image updates.
 
-Set `RGDASH_QBITTORRENT_USERNAME` and `RGDASH_QBITTORRENT_PASSWORD` to the WebUI login. Version 0.4.2 migrates the incorrectly named 0.4.1 qBittorrent value into the password field and assumes the default `admin` username only when no username exists. Radarr uses the complete 32-character `RGDASH_RADARR_KEY` with its private `http://radarr:7878` address.
+## Reverse proxy
 
-For Nginx Proxy Manager, create `dash.roguegaming.com.au` with scheme `http`, forward hostname `rogue-dashboard` and forward port `8080`. Do not use `localhost`, the host port `7805`, HTTPS to the container, or the old Homepage target. Enable Websockets, Force SSL and HTTP/2. If Cloudflare Tunnel fronts Nginx Proxy Manager, its published application service is `http://nginx-proxy-manager:80`.
+Attach your proxy container to the same `${MEDIA_NETWORK:-media-net}` Docker network, then forward to:
 
-## Security
+| Setting | Value |
+| --- | --- |
+| Scheme | `http` |
+| Hostname | `rogue-dashboard` |
+| Port | `8080` |
+| WebSockets | enabled |
 
-The main dashboard does not mount the Docker socket. Only the internal agent receives it, and that agent accepts container listing plus start, stop and restart—not shell execution, image deletion, arbitrary Engine paths or Compose file changes. Requests require a private generated token and Docker actions additionally require an administrator session.
+Use a domain you control, such as `dashboard.example.com`. The proxy must target container port `8080`, not host port `7805`. See [Reverse proxy guide](docs/REVERSE_PROXY.md) for Nginx and Nginx Proxy Manager examples.
 
-See [docs/SECURITY.md](docs/SECURITY.md) for deployment guidance.
+## Upgrade without losing settings
 
-## Publishing a release
-
-The repository contains validation and GHCR publishing workflows. After merging a tested change to `main`, publish a semantic version tag:
+Your administrator account and dashboard layout live in `data/`; custom artwork lives in `custom/`; integration values live in `.env`. Keep those paths and run:
 
 ```bash
-git tag v0.4.3
-git push origin v0.4.3
+git pull --ff-only
+./upgrade.sh
 ```
 
-GitHub Actions runs the Python tests, builds AMD64 and ARM64 images, and publishes `0.4.3`, `0.4`, and `latest` tags to the repository package.
+The upgrade pulls first, creates a timestamped backup, migrates supported legacy environment names, replaces the containers, verifies health and restores the previous local image if startup fails.
+
+Do not run `docker compose down -v` as part of an upgrade. Read [Upgrading and recovery](docs/UPGRADING.md) before moving an installation between hosts.
+
+## Documentation
+
+- [Installation and networking](docs/INSTALLATION.md)
+- [Configuration reference](docs/CONFIGURATION.md)
+- [Reverse proxy guide](docs/REVERSE_PROXY.md)
+- [Upgrading and recovery](docs/UPGRADING.md)
+- [Security model](docs/SECURITY.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [0.5.0 release notes](docs/RELEASE_0.5.0.md)
+- [Roadmap](docs/ROADMAP.md)
+
+## Contributing and local builds
+
+Repository contributors can build the exact source tree with the explicit override:
+
+```bash
+cp .env.example .env
+docker network create media-net 2>/dev/null || true
+docker compose -f docker-compose.yaml -f docker-compose.build.yaml up -d --build
+python -m unittest discover -s tests -v
+```
+
+The browser interface is plain HTML, CSS and JavaScript served by Python. There is no Node-based build step.
+
+## Acknowledgements
+
+Rogue Dashboard is an original implementation shaped by useful ideas from several self-hosted dashboard projects. See [Third-party inspiration](THIRD_PARTY_INSPIRATION.md) for the design review record. Product names and trademarks belong to their respective owners.

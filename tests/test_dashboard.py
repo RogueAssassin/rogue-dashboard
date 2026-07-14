@@ -27,6 +27,7 @@ from integrations import collect_widget
 
 class WidgetFixtureHandler(BaseHTTPRequestHandler):
     requested_paths = []
+    posted_paths = []
 
     def log_message(self, *_args):
         return
@@ -42,6 +43,7 @@ class WidgetFixtureHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_POST(self):
+        type(self).posted_paths.append(urlparse(self.path).path)
         body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         if self.path == "/api/v2/auth/login":
             values = parse_qs(body.decode())
@@ -64,7 +66,12 @@ class WidgetFixtureHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         type(self).requested_paths.append(parsed.path)
-        qbit_authorized = "SID=test-session" in self.headers.get("Cookie", "")
+        api_authorization = self.headers.get("Authorization", "")
+        qbit_api_path = parsed.path in ("/api/v2/transfer/info", "/api/v2/torrents/info")
+        if qbit_api_path and api_authorization.startswith("Bearer ") and api_authorization != f"Bearer qbt_{'A' * 28}":
+            self.respond({"error": "unauthorized"}, 401)
+            return
+        qbit_authorized = "SID=test-session" in self.headers.get("Cookie", "") or api_authorization == f"Bearer qbt_{'A' * 28}"
         if parsed.path == "/api/v2/transfer/info" and qbit_authorized:
             self.respond({"dl_info_speed": 2_000_000, "up_info_speed": 500_000})
         elif parsed.path == "/api/v2/torrents/info" and qbit_authorized:
@@ -107,22 +114,26 @@ class RogueDashboardTests(unittest.TestCase):
         fixture = ROOT / "tests" / "fixtures" / "homepage"
         cls.files = {path.name: path.read_text() for path in fixture.glob("*.yaml")}
 
-    def test_imports_supplied_homepage_configuration(self):
+    def test_imports_generic_homepage_configuration(self):
         result = import_homepage(self.files)
-        self.assertEqual(result["summary"]["groups"], 5)
+        self.assertEqual(result["summary"]["groups"], 7)
         self.assertEqual(result["summary"]["services"], 12)
         self.assertEqual(result["summary"]["bookmarks"], 3)
         self.assertEqual(result["summary"]["widgets"], 2)
-        self.assertEqual(len(result["summary"]["secretReferences"]), 9)
-        self.assertEqual(result["dashboard"]["meta"]["title"], "RogueGaming Media Dashboard")
+        self.assertEqual(len(result["summary"]["secretReferences"]), 10)
+        self.assertEqual(result["dashboard"]["meta"]["title"], "Home Lab Dashboard")
         qbit = result["dashboard"]["groups"][0]["items"][0]["widget"]
+        self.assertEqual(qbit["secretBindings"]["api_key"], "RGDASH_QBITTORRENT_API_KEY")
         self.assertEqual(qbit["secretBindings"]["username"], "RGDASH_QBITTORRENT_USERNAME")
         self.assertEqual(qbit["secretBindings"]["password"], "RGDASH_QBITTORRENT_PASSWORD")
-        self.assertNotIn("api_key", qbit["secretBindings"])
         self.assertNotIn("Homepage", [item["name"] for group in result["dashboard"]["groups"] for item in group["items"]])
-        links = result["dashboard"]["groups"][-1]
-        self.assertEqual(links["id"], "branded-links")
-        self.assertEqual([item["name"] for item in links["items"]], ["GitHub", "RogueGaming", "Thoughtful Comms"])
+        bookmarks = [
+            item["name"]
+            for group in result["dashboard"]["groups"]
+            if group["kind"] == "bookmarks"
+            for item in group["items"]
+        ]
+        self.assertEqual(bookmarks, ["GitHub", "Docker Docs", "Project Website"])
 
     def test_discards_literal_widget_credentials(self):
         result = import_homepage({
@@ -133,11 +144,13 @@ class RogueDashboardTests(unittest.TestCase):
 
     def test_live_service_widget_collectors_keep_secrets_server_side(self):
         WidgetFixtureHandler.requested_paths = []
+        WidgetFixtureHandler.posted_paths = []
         server = ThreadingHTTPServer(("127.0.0.1", 0), WidgetFixtureHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         base = f"http://127.0.0.1:{server.server_port}"
         values = {
+            "RGDASH_QBITTORRENT_API_KEY": f"qbt_{'A' * 28}",
             "RGDASH_QBITTORRENT_USERNAME": "widget-user",
             "RGDASH_QBITTORRENT_PASSWORD": "widget-pass",
             "RGDASH_RADARR_KEY": "a" * 32,
@@ -149,11 +162,10 @@ class RogueDashboardTests(unittest.TestCase):
             "TEST_SEERR_KEY": "seerr-key",
         }
         previous = {key: os.environ.get(key) for key in values}
-        os.environ.pop("RGDASH_QBITTORRENT_API_KEY", None)
         os.environ.update(values)
         try:
             cases = [
-                ("qbittorrent", ["RGDASH_QBITTORRENT_USERNAME", "RGDASH_QBITTORRENT_PASSWORD"], {"username": "RGDASH_QBITTORRENT_USERNAME", "password": "RGDASH_QBITTORRENT_PASSWORD"}, ["Download", "Upload", "Leech", "Seed"]),
+                ("qbittorrent", ["RGDASH_QBITTORRENT_API_KEY", "RGDASH_QBITTORRENT_USERNAME", "RGDASH_QBITTORRENT_PASSWORD"], {"api_key": "RGDASH_QBITTORRENT_API_KEY", "username": "RGDASH_QBITTORRENT_USERNAME", "password": "RGDASH_QBITTORRENT_PASSWORD"}, ["Download", "Upload", "Leech", "Seed"]),
                 ("radarr", ["RGDASH_RADARR_KEY"], {"key": "RGDASH_RADARR_KEY"}, ["Wanted", "Missing", "Queued", "Movies"]),
                 ("sonarr", ["TEST_ARR_KEY"], {"key": "TEST_ARR_KEY"}, ["Wanted", "Queued", "Series"]),
                 ("prowlarr", ["TEST_PROWLARR_KEY"], {"key": "TEST_PROWLARR_KEY"}, ["Grabs", "Queries", "Fail grabs", "Fail queries"]),
@@ -172,8 +184,48 @@ class RogueDashboardTests(unittest.TestCase):
                 for secret in values.values():
                     self.assertNotIn(secret, serialized)
             self.assertEqual(WidgetFixtureHandler.requested_paths.count("/api/v2/torrents/info"), 1)
+            self.assertEqual(WidgetFixtureHandler.posted_paths.count("/api/v2/auth/login"), 0)
         finally:
-            os.environ.pop("RGDASH_QBITTORRENT_API_KEY", None)
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def test_qbittorrent_falls_back_when_api_key_is_rejected(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), WidgetFixtureHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        values = {
+            "RGDASH_QBITTORRENT_API_KEY": f"qbt_{'B' * 28}",
+            "RGDASH_QBITTORRENT_USERNAME": "widget-user",
+            "RGDASH_QBITTORRENT_PASSWORD": "widget-pass",
+        }
+        previous = {key: os.environ.get(key) for key in values}
+        os.environ.update(values)
+        WidgetFixtureHandler.posted_paths = []
+        try:
+            result = collect_widget({
+                "id": "qbittorrent",
+                "widget": {
+                    "type": "qbittorrent",
+                    "url": f"http://127.0.0.1:{server.server_port}",
+                    "secretRefs": list(values),
+                    "secretBindings": {
+                        "api_key": "RGDASH_QBITTORRENT_API_KEY",
+                        "username": "RGDASH_QBITTORRENT_USERNAME",
+                        "password": "RGDASH_QBITTORRENT_PASSWORD",
+                    },
+                },
+            })
+            self.assertEqual(result["state"], "ok", result)
+            self.assertEqual(result["authentication"], "username_password_fallback")
+            self.assertIn("API key was rejected", result["message"])
+            self.assertEqual(WidgetFixtureHandler.posted_paths.count("/api/v2/auth/login"), 1)
+        finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
@@ -226,16 +278,14 @@ class RogueDashboardTests(unittest.TestCase):
         self.assertEqual(migrated["meta"]["theme"], "neon")
         self.assertEqual(migrated["meta"]["density"], "compact")
         migrated_widget = migrated["groups"][0]["items"][0]["widget"]
+        self.assertEqual(migrated_widget["secretBindings"]["api_key"], "RGDASH_QBITTORRENT_API_KEY")
         self.assertEqual(migrated_widget["secretBindings"]["username"], "RGDASH_QBITTORRENT_USERNAME")
         seerr = next(item for item in migrated["groups"][0]["items"] if item["name"] == "Seerr")
         self.assertEqual(seerr["widget"]["type"], "seerr")
         self.assertEqual(seerr["widget"]["secretRefs"], ["RGDASH_SEERR_KEY"])
 
-    def test_v04_dashboard_removes_homepage_and_consolidates_branded_links(self):
+    def test_v04_dashboard_removes_legacy_homepage_card_without_reordering_bookmarks(self):
         current = import_homepage(self.files)["dashboard"]
-        links = current["groups"].pop()
-        for index, item in enumerate(links["items"]):
-            current["groups"].append({"id": f"old-link-{index}", "name": f"Old links {index}", "kind": "bookmarks", "columns": 1, "collapsed": False, "items": [item]})
         current["groups"].append({
             "id": "admin", "name": "Admin", "kind": "services", "columns": 2, "collapsed": False,
             "items": [{"id": "homepage", "name": "Homepage", "href": "http://homepage:3000", "type": "service", "statusStyle": "dot"}],
@@ -244,8 +294,8 @@ class RogueDashboardTests(unittest.TestCase):
         migrated = dashboard_app.validate_dashboard(current)
         names = [item["name"] for group in migrated["groups"] for item in group["items"]]
         self.assertNotIn("Homepage", names)
-        self.assertEqual([item["name"] for item in migrated["groups"][-1]["items"]], ["GitHub", "RogueGaming", "Thoughtful Comms"])
-        self.assertEqual(migrated["groups"][-1]["columns"], 3)
+        bookmark_groups = [group["name"] for group in migrated["groups"] if group["kind"] == "bookmarks"]
+        self.assertEqual(bookmark_groups, ["Developer resources", "Documentation", "Project"])
 
     def test_reads_homepage_zip_without_extracting_paths(self):
         archive = BytesIO()
@@ -265,7 +315,7 @@ class RogueDashboardTests(unittest.TestCase):
             self.assertEqual(database.user_for_token(token), "admin")
             self.assertIsNone(database.login("admin", "incorrect-password"))
             self.assertIsNotNone(database.login("admin", "a-secure-test-password"))
-            self.assertEqual(database.dashboard()["meta"]["title"], "RogueGaming Media Dashboard")
+            self.assertEqual(database.dashboard()["meta"]["title"], "Home Lab Dashboard")
 
     def test_setup_and_authenticated_save_over_http(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -350,7 +400,7 @@ class RogueDashboardTests(unittest.TestCase):
                 "HOMEPAGE_VAR_RADARR_KEY=secret-a=b\n"
                 "HOMEPAGE_VAR_CF_KEY=secret-cf\n"
                 "RGDASH_RADARR_KEY=canonical-wins\n"
-                "RGDASH_QBITTORRENT_API_KEY=legacy-qbit-password\n"
+                "RGDASH_QBITTORRENT_API_KEY=qbt_1234567890123456789012345678\n"
                 "TZ=Australia/Melbourne\n"
             )
             result = subprocess.run(
@@ -363,8 +413,9 @@ class RogueDashboardTests(unittest.TestCase):
             self.assertNotIn("HOMEPAGE_", migrated)
             self.assertIn("RGDASH_RADARR_KEY=canonical-wins", migrated)
             self.assertIn("RGDASH_CF_KEY=secret-cf", migrated)
-            self.assertIn("RGDASH_QBITTORRENT_USERNAME=admin", migrated)
-            self.assertIn("RGDASH_QBITTORRENT_PASSWORD=legacy-qbit-password", migrated)
+            self.assertIn("RGDASH_QBITTORRENT_API_KEY=qbt_1234567890123456789012345678", migrated)
+            self.assertNotIn("RGDASH_QBITTORRENT_USERNAME=", migrated)
+            self.assertNotIn("RGDASH_QBITTORRENT_PASSWORD=", migrated)
             self.assertIn("TZ=Australia/Melbourne", migrated)
             self.assertNotIn("secret-a", result.stdout)
             self.assertEqual((Path(f"{env_file}.pre-rgdash")).read_text().splitlines()[0], "HOMEPAGE_VAR_RADARR_KEY=secret-a=b")

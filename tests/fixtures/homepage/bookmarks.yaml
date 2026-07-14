@@ -1,18 +1,15 @@
 ---
-# For configuration options and examples, please see:
-# https://gethomepage.dev/configs/bookmarks
-
-- Developer:
-    - Github/RogueAssassin:
+- Developer resources:
+    - GitHub:
         - abbr: GH
-          href: https://github.com/RogueAssassin
+          href: https://github.com/example
 
-- Website RGA:
-    - RogueGamingAU/NZ:
-        - abbr: RGA
-          href: https://roguegaming.com.au/
+- Documentation:
+    - Docker Docs:
+        - abbr: DD
+          href: https://docs.docker.com/
 
-- Website TC:
-    - Thoughtful Comms:
-        - abbr: TC
-          href: https://thoughtfulcomms.com.au/
+- Project:
+    - Project Website:
+        - abbr: PW
+          href: https://example.com/

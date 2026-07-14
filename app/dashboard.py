@@ -29,11 +29,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 import zipfile
 
-from importer import DEFAULT_DASHBOARD, import_homepage, organize_branded_links, suggested_widget
+from importer import DEFAULT_DASHBOARD, import_homepage, suggested_widget
 from integrations import SUPPORTED_WIDGETS, collect_widget
 
 
-VERSION = "0.4.3"
+VERSION = "0.5.0"
 PORT = int(os.environ.get("PORT", "8080"))
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8081"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -172,12 +172,9 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
                 if isinstance(raw_widget.get("version"), (str, int)):
                     widget["version"] = raw_widget["version"]
                 if widget["type"].lower() == "qbittorrent":
-                    widget["secretRefs"] = [
-                        ref for ref in widget["secretRefs"] if ref != "RGDASH_QBITTORRENT_API_KEY"
-                    ]
                     bindings = widget.setdefault("secretBindings", {})
-                    bindings.pop("api_key", None)
                     for binding, ref in (
+                        ("api_key", "RGDASH_QBITTORRENT_API_KEY"),
                         ("username", "RGDASH_QBITTORRENT_USERNAME"),
                         ("password", "RGDASH_QBITTORRENT_PASSWORD"),
                     ):
@@ -192,8 +189,7 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
             if not (stored_version < 3 and re.sub(r"[^a-z0-9]+", "", item["name"].lower()) == "homepage"):
                 group["items"].append(item)
         result["groups"].append(group)
-    if stored_version < 3:
-        result["groups"] = organize_branded_links(result["groups"])
+    result["groups"] = [group for group in result["groups"] if group["items"]]
     if not result["groups"]:
         result["groups"] = deepcopy(DEFAULT_DASHBOARD["groups"])
     return result
@@ -341,7 +337,7 @@ def docker_containers() -> list[dict[str, Any]]:
         labels = {
             key: value
             for key, value in (container.get("Labels") or {}).items()
-            if key in exact_labels or key.startswith("homepage.") or key.startswith("rogue.dashboard.")
+            if key in exact_labels or key.startswith("rogue.dashboard.")
         }
         containers.append(
             {

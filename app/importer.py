@@ -37,8 +37,9 @@ REFERENCE = re.compile(r"\{\{\s*([A-Z][A-Z0-9_]*)\s*}}|\$\{\s*([A-Z][A-Z0-9_]*)\
 INTEGRATION_DEFAULTS = {
     "qbittorrent": (
         "qbittorrent",
-        ["RGDASH_QBITTORRENT_USERNAME", "RGDASH_QBITTORRENT_PASSWORD"],
+        ["RGDASH_QBITTORRENT_API_KEY", "RGDASH_QBITTORRENT_USERNAME", "RGDASH_QBITTORRENT_PASSWORD"],
         {
+            "api_key": "RGDASH_QBITTORRENT_API_KEY",
             "username": "RGDASH_QBITTORRENT_USERNAME",
             "password": "RGDASH_QBITTORRENT_PASSWORD",
         },
@@ -80,47 +81,6 @@ def suggested_widget(name: str, url: str) -> dict[str, Any] | None:
     return result
 
 
-def organize_branded_links(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    brands: dict[str, dict[str, Any]] = {}
-    result: list[dict[str, Any]] = []
-    definitions = {
-        "github": ("GitHub", "/icons/github.svg"),
-        "roguegaming": ("RogueGaming", "/icons/roguegaming.svg"),
-        "thoughtfulcomms": ("Thoughtful Comms", "/icons/thoughtful-comms.svg"),
-    }
-    for group in groups:
-        kept: list[dict[str, Any]] = []
-        for item in group.get("items", []):
-            if group.get("kind") != "bookmarks":
-                kept.append(item)
-                continue
-            identity = re.sub(r"[^a-z0-9]+", "", f"{item.get('name', '')} {item.get('href', '')}".lower())
-            brand = next((key for key in definitions if key in identity), None)
-            if not brand:
-                kept.append(item)
-                continue
-            if brand not in brands:
-                name, icon = definitions[brand]
-                item = dict(item)
-                item.update(name=name, icon=icon, type="bookmark", statusStyle="none")
-                brands[brand] = item
-        if kept:
-            copied = dict(group)
-            copied["items"] = kept
-            result.append(copied)
-    ordered = [brands[key] for key in ("github", "roguegaming", "thoughtfulcomms") if key in brands]
-    if ordered:
-        result.append({
-            "id": "branded-links",
-            "name": "Links",
-            "kind": "bookmarks",
-            "columns": 3,
-            "collapsed": False,
-            "items": ordered,
-        })
-    return result
-
-
 def _slug(name: str, used: set[str]) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "item"
     candidate = base
@@ -156,15 +116,14 @@ def _widget(raw: Any, warnings: list[str], item_name: str) -> dict[str, Any] | N
     if bindings:
         result["secretBindings"] = bindings
     if raw["type"].lower() == "qbittorrent":
-        result["secretRefs"] = [ref for ref in result["secretRefs"] if ref != "RGDASH_QBITTORRENT_API_KEY"]
         for binding, ref in (
+            ("api_key", "RGDASH_QBITTORRENT_API_KEY"),
             ("username", "RGDASH_QBITTORRENT_USERNAME"),
             ("password", "RGDASH_QBITTORRENT_PASSWORD"),
         ):
             if ref not in result["secretRefs"]:
                 result["secretRefs"].append(ref)
             result.setdefault("secretBindings", {})[binding] = ref
-        result.get("secretBindings", {}).pop("api_key", None)
     if isinstance(raw.get("url"), str):
         result["url"] = raw["url"]
     if isinstance(raw.get("version"), (str, int)):
@@ -248,9 +207,12 @@ def import_homepage(files: dict[str, str]) -> dict[str, Any]:
     settings = settings if isinstance(settings, dict) else {}
     layout = settings.get("layout") if isinstance(settings.get("layout"), dict) else {}
     used: set[str] = set()
-    groups = organize_branded_links(
-        _groups(services, "services", layout, used, warnings) + _groups(bookmarks, "bookmarks", layout, used, warnings)
-    )
+    groups = [
+        group
+        for group in _groups(services, "services", layout, used, warnings)
+        + _groups(bookmarks, "bookmarks", layout, used, warnings)
+        if group["items"]
+    ]
     dashboard = deepcopy(DEFAULT_DASHBOARD)
     dashboard["groups"] = groups or dashboard["groups"]
     if isinstance(settings.get("title"), str):

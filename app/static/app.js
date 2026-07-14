@@ -29,8 +29,7 @@ const LOCAL_ICONS = {
   tautulli: "/icons/tautulli.svg", pihole: "/icons/pihole.svg", dozzle: "/icons/dozzle.svg",
   uptimekuma: "/icons/uptime-kuma.svg", dockge: "/icons/dockge.svg",
   flaresolverr: "/icons/flaresolverr.svg",
-  github: "/icons/github.svg", roguegaming: "/icons/roguegaming.svg",
-  thoughtfulcomms: "/icons/thoughtful-comms.svg",
+  github: "/icons/github.svg",
 };
 
 const THEME_PRESETS = {
@@ -40,7 +39,7 @@ const THEME_PRESETS = {
 };
 
 const INTEGRATION_DEFAULTS = {
-  qbittorrent: { refs: ["RGDASH_QBITTORRENT_USERNAME", "RGDASH_QBITTORRENT_PASSWORD"], bindings: { username: "RGDASH_QBITTORRENT_USERNAME", password: "RGDASH_QBITTORRENT_PASSWORD" } },
+  qbittorrent: { refs: ["RGDASH_QBITTORRENT_API_KEY", "RGDASH_QBITTORRENT_USERNAME", "RGDASH_QBITTORRENT_PASSWORD"], bindings: { api_key: "RGDASH_QBITTORRENT_API_KEY", username: "RGDASH_QBITTORRENT_USERNAME", password: "RGDASH_QBITTORRENT_PASSWORD" } },
   prowlarr: { refs: ["RGDASH_PROWLARR_KEY"], bindings: { key: "RGDASH_PROWLARR_KEY" } },
   radarr: { refs: ["RGDASH_RADARR_KEY"], bindings: { key: "RGDASH_RADARR_KEY" } },
   sonarr: { refs: ["RGDASH_SONARR_KEY"], bindings: { key: "RGDASH_SONARR_KEY" } },
@@ -249,7 +248,7 @@ function renderDashboard() {
           <div class="mini-stat"><span>⌁</span><div><strong id="load-count">—</strong><span id="uptime-count">System load</span></div></div>
         </section>
         <div class="result-count" id="result-count"></div><div class="groups" id="groups"></div>
-        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.4.3")}</strong></span><span>Local-first · Docker-powered</span></footer>
+        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.5.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
       </main>
       ${state.editor ? editorMarkup() : ""}
     </div>`;
@@ -386,7 +385,7 @@ function editorMarkup() {
         <label class="field"><span>Dashboard title</span><input id="edit-title" value="${escapeHtml(state.draft.meta.title)}"></label>
         <label class="field"><span>Subtitle</span><input id="edit-subtitle" value="${escapeHtml(state.draft.meta.subtitle)}"></label>
         <div class="form-grid">
-          <label class="field"><span>Theme preset</span><select id="edit-theme"><option value="neon">Thoughtful Neon</option><option value="midnight">Midnight</option><option value="graphite">Graphite</option><option value="ocean">Ocean</option><option value="ember">Ember</option><option value="light">Daylight</option></select></label>
+          <label class="field"><span>Theme preset</span><select id="edit-theme"><option value="neon">Electric Neon</option><option value="midnight">Midnight</option><option value="graphite">Graphite</option><option value="ocean">Ocean</option><option value="ember">Ember</option><option value="light">Daylight</option></select></label>
           <label class="field"><span>Card density</span><select id="edit-density"><option value="compact">Compact operations</option><option value="comfortable">Comfortable</option></select></label>
           <label class="field full"><span>Background effect</span><select id="edit-background-mode"><option value="neon-grid">Neon grid</option><option value="aurora">Aurora glow</option><option value="mesh">Colour mesh</option><option value="solid">Solid</option><option value="image">Custom image</option></select></label>
         </div>
@@ -395,7 +394,7 @@ function editorMarkup() {
         <label class="field range-field"><span>Neon glow <strong id="glow-value">${state.draft.meta.glow}%</strong></span><input id="edit-glow" type="range" min="0" max="100" value="${state.draft.meta.glow}"></label>
         <label class="field range-field"><span>Card opacity <strong id="opacity-value">${state.draft.meta.surfaceOpacity}%</strong></span><input id="edit-opacity" type="range" min="45" max="100" value="${state.draft.meta.surfaceOpacity}"></label>
         <label class="field"><span>Custom background URL or local path</span><input id="edit-background" value="${escapeHtml(state.draft.meta.background)}" placeholder="/custom/backgrounds/my-background.jpg"><small>Choose Custom image above to display it.</small></label>
-        <button class="button secondary full-button" id="reset-appearance">Restore Thoughtful Neon defaults</button>
+        <button class="button secondary full-button" id="reset-appearance">Restore Electric Neon defaults</button>
       </section>
       <section class="editor-section editor-tab-panel ${state.editorTab === "layout" ? "active" : ""}" data-editor-panel="layout">
         <label class="field"><span>Maximum dashboard columns</span><select id="edit-max-columns">${[1,2,3,4,5,6].map(value => `<option value="${value}" ${state.draft.meta.maxColumns === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
@@ -489,7 +488,7 @@ function bindEditor() {
   };
   document.getElementById("reset-appearance").onclick = () => {
     Object.assign(state.draft.meta, { theme: "neon", accent: "#ff2bd6", accentSecondary: "#00e5ff", background: "", backgroundMode: "neon-grid", density: "compact", glow: 68, surfaceOpacity: 82 });
-    state.editorTab = "appearance"; renderDashboard(); toast("Thoughtful Neon defaults restored in the preview");
+    state.editorTab = "appearance"; renderDashboard(); toast("Electric Neon defaults restored in the preview");
   };
   document.getElementById("edit-max-columns").onchange = event => { state.draft.meta.maxColumns = Number(event.target.value); renderGroups(); };
   document.getElementById("edit-full").onchange = event => { state.draft.meta.fullWidth = event.target.checked; document.querySelector(".dashboard").classList.toggle("full-width", event.target.checked); };
@@ -596,7 +595,7 @@ function exportJson() {
 
 function integrationHint(type) {
   const config = INTEGRATION_DEFAULTS[type];
-  if (type === "qbittorrent") return "Use the qBittorrent WebUI username and password in RGDASH_QBITTORRENT_USERNAME and RGDASH_QBITTORRENT_PASSWORD.";
+  if (type === "qbittorrent") return "qBittorrent 5.2+: use RGDASH_QBITTORRENT_API_KEY. Username and password are the automatic fallback.";
   return config ? `Add ${config.refs.join(" and ")} to .env.` : "Health-check monitoring only; no API credentials required.";
 }
 

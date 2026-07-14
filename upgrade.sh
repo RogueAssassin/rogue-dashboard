@@ -35,8 +35,6 @@ image_ref=$(compose config --images | sort -u | head -n 1)
 old_image=$(docker inspect --format '{{.Image}}' rogue-dashboard 2>/dev/null || true)
 upgrade_started=0
 upgrade_finished=0
-homepage_stopped=0
-port_owner_id=""
 backup_dir=""
 
 recover_on_failure() {
@@ -51,9 +49,6 @@ recover_on_failure() {
       docker image tag "$old_image" "$image_ref" >/dev/null 2>&1 || true
       compose up -d --remove-orphans --pull never >/dev/null 2>&1 || true
     fi
-    if [ "$homepage_stopped" -eq 1 ] && [ -n "$port_owner_id" ]; then
-      docker start "$port_owner_id" >/dev/null 2>&1 || true
-    fi
   fi
   exit "$status"
 }
@@ -66,11 +61,9 @@ port=$(sed -n 's/^RGDASH_PORT=//p' .env | tail -n 1)
 port=${port:-7805}
 port_owner_line=$(docker ps --filter "publish=$port" --format '{{.ID}} {{.Names}}' | head -n 1)
 if [ -n "$port_owner_line" ]; then
-  port_owner_id=${port_owner_line%% *}
   port_owner_name=${port_owner_line#* }
   case "$port_owner_name" in
-    rogue-dashboard|rogue-dashboard-*) port_owner_id="" ;;
-    *homepage*|*Homepage*) echo "Homepage currently owns port $port and will be stopped for the dashboard takeover." ;;
+    rogue-dashboard|rogue-dashboard-*) : ;;
     *) echo "Port $port is already published by $port_owner_name. Stop or move it, then rerun the upgrade."; exit 1 ;;
   esac
 fi
@@ -92,20 +85,17 @@ mkdir -p custom/icons custom/backgrounds
 chmod 775 custom custom/icons custom/backgrounds
 sh ./migrate-env.sh .env
 
-if env_has_value RGDASH_QBITTORRENT_USERNAME && env_has_value RGDASH_QBITTORRENT_PASSWORD; then
-  echo "qBittorrent environment check: WebUI username and password are loaded."
+if env_has_value RGDASH_QBITTORRENT_API_KEY; then
+  echo "qBittorrent environment check: the qBittorrent 5.2+ API key is loaded as the primary method."
+elif env_has_value RGDASH_QBITTORRENT_USERNAME && env_has_value RGDASH_QBITTORRENT_PASSWORD; then
+  echo "qBittorrent environment check: WebUI username/password fallback is loaded."
 else
-  echo "WARNING: qBittorrent needs both RGDASH_QBITTORRENT_USERNAME and RGDASH_QBITTORRENT_PASSWORD in .env."
+  echo "WARNING: qBittorrent needs RGDASH_QBITTORRENT_API_KEY or both username/password values in .env."
 fi
 if env_has_value RGDASH_RADARR_KEY; then
   echo "Radarr environment check: API key is loaded."
 else
   echo "WARNING: RGDASH_RADARR_KEY is empty or missing in .env."
-fi
-
-if [ -n "$port_owner_id" ]; then
-  docker stop "$port_owner_id" >/dev/null
-  homepage_stopped=1
 fi
 
 compose up -d --remove-orphans --pull never
@@ -122,7 +112,6 @@ done
 
 upgrade_finished=1
 trap - EXIT
-if [ "$homepage_stopped" -eq 1 ]; then docker update --restart=no "$port_owner_id" >/dev/null 2>&1 || true; fi
 
 echo
 running_version=$(docker exec rogue-dashboard python -c 'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/api/ping"))["version"])' 2>/dev/null || true)

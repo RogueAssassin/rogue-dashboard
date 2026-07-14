@@ -1,37 +1,45 @@
 # Architecture
 
-## Runtime layout
+Rogue Dashboard is a Docker-first, standard-library Python application with a browser-native frontend. Production hosts pull one prebuilt image; no language runtime or frontend package manager is installed on the host.
 
-Rogue Dashboard is one Docker image used in two modes:
+## Runtime services
 
-Production hosts consume the prebuilt `ghcr.io/rogueassassin/rogue-dashboard` image. They do not need the application source, a Python installation or any frontend toolchain. `docker-compose.build.yaml` is an explicit repository-contributor override and is never required on the media server.
-
-| Service | Network exposure | Responsibility |
+| Service | Exposure | Responsibility |
 | --- | --- | --- |
-| Dashboard | Host port `7805`, internal port `8080` | UI, authentication, imports, persistence and service monitoring |
-| Docker agent | Internal port `8081` only | Allow-listed Docker Engine metadata and container lifecycle actions |
+| `dashboard` | Host `${RGDASH_PORT:-7805}` → container `8080` | UI, authentication, imports, persistence, monitoring and integration clients |
+| `docker-agent` | Internal `8081` only | Allow-listed Docker metadata and container lifecycle operations |
 
-The browser communicates only with the dashboard. The dashboard calls the agent over the isolated Compose network using a randomly generated bearer token. The agent is never published to the host.
+The browser talks only to `dashboard`. The dashboard calls the agent over the private Compose network with a generated bearer token. The agent is not attached to the shared application network and has no host port.
 
-## Application files
+## Request and data flow
 
-- `app/dashboard.py`: HTTP API, SQLite storage, authentication, Docker agent and health monitoring.
-- `app/homepage_yaml.py`: constrained data-only reader for the Homepage YAML subset.
-- `app/importer.py`: conversion into the versioned internal dashboard model.
-- `app/integrations.py`: server-side service API clients, response timing and sanitized live metrics.
-- `app/static`: browser-native interface with no compilation step.
-- `app/static/icons`: bundled original offline service glyphs.
-- `custom`: bind-mounted user icons and backgrounds, served read-only under `/custom/`.
-- `docker-compose.yaml`: deploys on host port 7805 and joins the private agent network plus shared external `media-net`.
-- `docker-compose.media-net.yaml`: compatibility file retained for older lifecycle scripts.
+```mermaid
+flowchart TD
+    Browser["Browser"] --> App["Dashboard HTTP server"]
+    App --> SQLite["SQLite in ./data"]
+    App --> Integrations["Service APIs on shared network"]
+    App --> Agent["Restricted agent"]
+    Agent --> Engine["Docker Engine socket"]
+```
 
-## Persistence
+## Source layout
 
-SQLite uses write-ahead logging inside the bind-mounted `data` directory. Administrator passwords are protected with `scrypt` and random salts. Session tokens are random, hashed in the database, HTTP-only and expire after 14 days.
+- `app/dashboard.py` — HTTP API, SQLite storage, sessions, validation, monitoring and agent mode.
+- `app/homepage_yaml.py` — constrained data-only parser for the supported Homepage YAML subset.
+- `app/importer.py` — conversion into the internal dashboard model and environment references.
+- `app/integrations.py` — server-side API clients, authentication fallback, timing and sanitised metrics.
+- `app/static/` — plain HTML, CSS, JavaScript and bundled offline icons.
+- `custom/` — persistent user artwork, mounted read-only and served under `/custom/`.
+- `docker-compose.yaml` — production pull-based runtime.
+- `docker-compose.build.yaml` — explicit source-build override for contributors.
 
-Service widget credentials are resolved from `.env` only when a collector runs. Canonical variables use the `RGDASH_*` namespace, with a read-only legacy fallback for a safe transition. The public `/api/widgets` response contains display values, state, timing and configured/missing environment-variable names, but never their values. Results are cached for 25 seconds to avoid excessive polling.
+## Persistence and secrets
 
-`upgrade.sh` creates a private timestamped backup and preserves the previous image ID for an automatic local rollback before replacing running containers.
+SQLite runs in write-ahead logging mode inside bind-mounted `data/`. Administrator passwords use `scrypt` with unique random salts. Session tokens are random, stored as hashes and expire after 14 days.
+
+Integration credentials are resolved from environment variables only when a collector runs. Widget responses may contain display metrics, state, timing and configured or missing variable names, but never the values. Results are cached briefly to avoid unnecessary service polling.
+
+The upgrade script creates a private timestamped backup before changing the running image and remembers the previous local image ID for automatic startup rollback.
 
 ## Docker boundary
 
@@ -43,4 +51,5 @@ The agent implements only:
 - authenticated `POST /containers/{id}/stop`
 - authenticated `POST /containers/{id}/restart`
 
-There is no general Docker proxy route.
+There is no general Docker proxy, command execution route, image deletion route or arbitrary Engine API passthrough.
+

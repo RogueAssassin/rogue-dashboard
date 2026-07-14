@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        RGDASH_VERSION: 0.4.3-dev
+        RGDASH_VERSION: 0.5.0-dev
 
   docker-agent:
     image: rogue-dashboard:dev
@@ -16,4 +16,4 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        RGDASH_VERSION: 0.4.3-dev
+        RGDASH_VERSION: 0.5.0-dev
