@@ -33,7 +33,7 @@ from importer import DEFAULT_DASHBOARD, import_homepage, suggested_widget
 from integrations import SUPPORTED_WIDGETS, collect_widget
 
 
-VERSION = "0.8.0"
+VERSION = "1.0.0"
 PORT = int(os.environ.get("PORT", "8080"))
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8081"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -273,11 +273,23 @@ class Database:
             );
             CREATE TABLE IF NOT EXISTS sessions (
               token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-              expires_at INTEGER NOT NULL
+              expires_at INTEGER NOT NULL, created_at TEXT, last_seen_at TEXT
             );
             CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
+            CREATE TABLE IF NOT EXISTS action_audit (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, occurred_at TEXT NOT NULL, username TEXT NOT NULL,
+              action TEXT NOT NULL, target TEXT NOT NULL, outcome TEXT NOT NULL, detail TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS action_audit_time_idx ON action_audit(occurred_at DESC);
             """
         )
+        session_columns = {row[1] for row in self.db.execute("PRAGMA table_info(sessions)")}
+        if "created_at" not in session_columns:
+            self.db.execute("ALTER TABLE sessions ADD COLUMN created_at TEXT")
+        if "last_seen_at" not in session_columns:
+            self.db.execute("ALTER TABLE sessions ADD COLUMN last_seen_at TEXT")
+        now = utc_now()
+        self.db.execute("UPDATE sessions SET created_at=COALESCE(created_at,?),last_seen_at=COALESCE(last_seen_at,?)", (now, now))
         self.db.commit()
 
     def setup_required(self) -> bool:
@@ -301,9 +313,10 @@ class Database:
                     "INSERT INTO settings(key,value,updated_at) VALUES('dashboard',?,?)",
                     (json.dumps(dashboard, separators=(",", ":")), utc_now()),
                 )
+                created_at = utc_now()
                 self.db.execute(
-                    "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
-                    (token_hash, cursor.lastrowid, expires),
+                    "INSERT INTO sessions(token_hash,user_id,expires_at,created_at,last_seen_at) VALUES(?,?,?,?,?)",
+                    (token_hash, cursor.lastrowid, expires, created_at, created_at),
                 )
                 self.db.commit()
             except Exception:
@@ -325,9 +338,10 @@ class Database:
         token, token_hash, expires = make_session()
         with self.lock:
             self.db.execute("DELETE FROM sessions WHERE expires_at<?", (int(time.time()),))
+            created_at = utc_now()
             self.db.execute(
-                "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
-                (token_hash, row[0], expires),
+                "INSERT INTO sessions(token_hash,user_id,expires_at,created_at,last_seen_at) VALUES(?,?,?,?,?)",
+                (token_hash, row[0], expires, created_at, created_at),
             )
             self.db.commit()
         return token, expires
@@ -341,6 +355,9 @@ class Database:
                 "SELECT users.username FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?",
                 (digest, int(time.time())),
             ).fetchone()
+            if row:
+                self.db.execute("UPDATE sessions SET last_seen_at=? WHERE token_hash=?", (utc_now(), digest))
+                self.db.commit()
         return row[0] if row else None
 
     def logout(self, token: str | None) -> None:
@@ -349,6 +366,58 @@ class Database:
         with self.lock:
             self.db.execute("DELETE FROM sessions WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
             self.db.commit()
+
+    def sessions(self, current_token: str | None) -> list[dict[str, Any]]:
+        current_hash = hashlib.sha256(current_token.encode()).hexdigest() if current_token else ""
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT token_hash,created_at,last_seen_at,expires_at FROM sessions WHERE expires_at>? ORDER BY last_seen_at DESC",
+                (int(time.time()),),
+            ).fetchall()
+        return [
+            {
+                "id": row[0][:12],
+                "createdAt": row[1],
+                "lastSeenAt": row[2],
+                "expiresAt": row[3],
+                "current": hmac.compare_digest(row[0], current_hash),
+            }
+            for row in rows
+        ]
+
+    def revoke_session(self, session_id: str, current_token: str | None) -> bool:
+        if not re.fullmatch(r"[0-9a-f]{12}", session_id):
+            raise ValueError("Invalid session id")
+        current_hash = hashlib.sha256(current_token.encode()).hexdigest() if current_token else ""
+        with self.lock:
+            cursor = self.db.execute(
+                "DELETE FROM sessions WHERE token_hash LIKE ? AND token_hash<>?",
+                (f"{session_id}%", current_hash),
+            )
+            self.db.commit()
+        return cursor.rowcount > 0
+
+    def audit(self, username: str, action: str, target: str, outcome: str, detail: str = "") -> None:
+        with self.lock:
+            self.db.execute(
+                "INSERT INTO action_audit(occurred_at,username,action,target,outcome,detail) VALUES(?,?,?,?,?,?)",
+                (utc_now(), text(username, 100), text(action, 100), text(target, 200), text(outcome, 40), text(detail, 500)),
+            )
+            self.db.execute(
+                "DELETE FROM action_audit WHERE id NOT IN (SELECT id FROM action_audit ORDER BY id DESC LIMIT 1000)"
+            )
+            self.db.commit()
+
+    def audit_entries(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT occurred_at,username,action,target,outcome,detail FROM action_audit ORDER BY id DESC LIMIT ?",
+                (clamp(limit, 1, 250, 100),),
+            ).fetchall()
+        return [
+            {"occurredAt": row[0], "username": row[1], "action": row[2], "target": row[3], "outcome": row[4], "detail": row[5]}
+            for row in rows
+        ]
 
     def dashboard(self) -> dict[str, Any]:
         with self.lock:
@@ -761,6 +830,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.json_response({"containers": containers_from_agent(include_stats=True)})
             except Exception as error:
                 self.json_response({"containers": [], "error": str(error)}, HTTPStatus.SERVICE_UNAVAILABLE)
+        elif path == "/api/admin/sessions":
+            if not self.require_admin():
+                return
+            self.json_response({"sessions": DB.sessions(self.session_token())})
+        elif path == "/api/admin/audit":
+            if not self.require_admin():
+                return
+            self.json_response({"entries": DB.audit_entries()})
         elif path.startswith("/api/"):
             self.json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         elif path.startswith("/custom/"):
@@ -799,7 +876,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.login(body)
             elif path == "/api/auth/logout":
                 token = self.session_token()
+                username = self.username() or "administrator"
                 DB.logout(token)
+                DB.audit(username, "auth.logout", "session", "success")
                 self.json_response({"ok": True}, cookie=clear_cookie(self.request_is_secure()))
             elif path == "/api/import/homepage":
                 if not DB.setup_required() and not self.require_admin():
@@ -835,8 +914,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     raise ValueError("Invalid Docker action request")
                 container_id = text(body.get("containerId"), 64)
                 action = text(body.get("action"), 20)
-                action_through_agent(container_id, action)
+                username = self.username() or "administrator"
+                try:
+                    action_through_agent(container_id, action)
+                    DB.audit(username, f"docker.{action}", container_id[:12], "success")
+                except Exception as error:
+                    DB.audit(username, f"docker.{action or 'unknown'}", container_id[:12], "failed", type(error).__name__)
+                    raise
                 self.json_response({"ok": True, "containerId": container_id, "action": action})
+            elif path == "/api/admin/sessions/revoke":
+                if not self.require_admin():
+                    return
+                if not isinstance(body, dict):
+                    raise ValueError("Invalid session request")
+                session_id = text(body.get("sessionId"), 12)
+                revoked = DB.revoke_session(session_id, self.session_token())
+                DB.audit(self.username() or "administrator", "session.revoke", session_id, "success" if revoked else "not_found")
+                self.json_response({"ok": True, "revoked": revoked})
             else:
                 self.json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except (ValueError, json.JSONDecodeError, zipfile.BadZipFile) as error:
@@ -859,6 +953,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             dashboard = validate_dashboard(self.body_json())
             DB.save_dashboard(dashboard)
+            DB.audit(self.username() or "administrator", "dashboard.save", "dashboard", "success")
             clear_monitor_caches()
             self.json_response({"ok": True, "dashboard": dashboard})
         except (ValueError, json.JSONDecodeError) as error:
@@ -878,6 +973,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             raise ValueError("Password must contain between 10 and 200 characters")
         dashboard = validate_dashboard(body.get("dashboard"))
         token, expires = DB.setup(username, password, dashboard)
+        DB.audit(username, "setup.complete", "dashboard", "success")
         self.json_response({"ok": True}, HTTPStatus.CREATED, session_cookie(token, expires, self.request_is_secure()))
 
     def login(self, body: Any) -> None:
@@ -902,6 +998,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         with LOGIN_LOCK:
             FAILED_LOGINS.pop(client, None)
+        DB.audit(username, "auth.login", "session", "success")
         self.json_response(
             {"ok": True, "username": username},
             cookie=session_cookie(*result, secure=self.request_is_secure()),

@@ -35,13 +35,15 @@ flowchart TD
 
 ## Persistence and secrets
 
-SQLite runs in write-ahead logging mode inside bind-mounted `data/`. Administrator passwords use `scrypt` with unique random salts. Session tokens are random, stored as hashes and expire after 14 days.
+SQLite runs in write-ahead logging mode inside bind-mounted `data/`. Administrator passwords use `scrypt` with unique random salts. Session tokens are random, stored as hashes and expire after 14 days. The UI sees only a 12-character hash prefix for session management; the current session cannot revoke itself through the administrative endpoint.
 
 Integration credentials are resolved from environment variables only when a collector runs. Widget responses may contain display metrics, state, timing and configured or missing variable names, but never the values. Results are cached briefly to avoid unnecessary service polling.
 
 The upgrade script creates a private timestamped backup before changing the running image and remembers the previous local image ID for automatic startup rollback. Compose bounds Docker's JSON logs to three 10 MB files per service and applies process limits to reduce accidental resource exhaustion.
 
 Dashboard schema 6 stores named pages separately from groups. Each group carries a `pageId`; older layouts receive a generated Home page during validation. JSON restores pass through the same server-side length and schema validation as normal dashboard saves.
+
+The action-audit table retains at most 1,000 rows. It stores time, local username, action name, target identifier, outcome and a sanitised detail label; it does not store request bodies, cookies, environment values or service credentials.
 
 ## Docker boundary
 

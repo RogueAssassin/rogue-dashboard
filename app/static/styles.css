@@ -65,6 +65,11 @@ a { color: inherit; }
 .page-tabs button.active { border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--text); }
 .page-editor-list { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
 .page-editor-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; align-items: center; }
+.admin-list { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
+.admin-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.admin-row > div strong, .admin-row > div span { display: block; }
+.admin-row > div strong { font-size: .72rem; }
+.admin-row > div span { margin-top: 3px; color: var(--muted); font-size: .59rem; overflow-wrap: anywhere; }
 
 .button { min-height: 40px; border: 1px solid var(--border-bright); border-radius: 12px; padding: 0 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--surface-soft); color: var(--text); font-weight: 700; font-size: .84rem; cursor: pointer; transition: transform .16s ease, border-color .16s ease, background .16s ease, opacity .16s ease; }
 .button:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 42%, var(--border-bright)); }
@@ -152,7 +157,7 @@ a { color: inherit; }
 .icon-button { width: 34px; height: 34px; display: inline-grid; place-items: center; flex: 0 0 auto; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); color: var(--muted); cursor: pointer; }
 .icon-button:hover { color: var(--text); border-color: var(--border-bright); }
 .icon-button.danger:hover { color: #ff7e88; border-color: rgba(255,126,136,.35); }
-.editor-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin: 0 14px; padding: 4px; border-radius: 12px; background: var(--surface-soft); }
+.editor-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin: 0 14px; padding: 4px; border-radius: 12px; background: var(--surface-soft); }
 .editor-tabs button { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 8px 3px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: .67rem; cursor: pointer; }
 .editor-tabs button.active { background: var(--surface-strong); box-shadow: 0 3px 10px rgba(0,0,0,.12); color: var(--text); }
 .editor-tabs button.active svg { color: var(--accent); }

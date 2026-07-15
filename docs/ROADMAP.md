@@ -1,47 +1,37 @@
 # Roadmap
 
-This roadmap describes direction, not promised dates. Every release must preserve Docker-native installation, safe migration, WSL compatibility, secret isolation and a usable browser setup flow.
+The 1.0 line establishes the stable Docker-first foundation. Future work remains gated by migration safety, a useful non-technical setup flow, WSL compatibility and a narrow Docker security boundary.
 
-## Delivered through 0.6
+## Delivered through 1.0
 
-- Local administrator setup, SQLite persistence and secret-safe Homepage import.
-- Responsive service and bookmark groups, search, live preview and drag-and-drop editing.
-- Six themes, dual accents, background effects, density controls and local custom artwork.
-- Live qBittorrent, Prowlarr, Radarr, Sonarr, Seerr, Bazarr, Tautulli and Pi-hole metrics.
-- Connection diagnostics for Docker DNS, ports, API authentication and environment readiness.
-- Restricted Docker discovery and confirmed start, stop and restart actions.
-- Multi-network service access, Docker network visibility and duplicate-safe discovered cards.
-- Pull-based AMD64/ARM64 GHCR deployment, backup-first upgrades and tag-gated publishing.
+- Browser setup, local authentication, SQLite persistence and backup-first upgrades.
+- Multi-page service/bookmark layouts, search, live editing, themes and local artwork.
+- Secret-safe Homepage import plus validated Rogue Dashboard JSON restore.
+- Live media-service integrations and connection diagnostics.
+- Restricted Docker discovery, network visibility, runtime metrics and confirmed lifecycle actions.
+- Administrator session review, protected revocation and bounded action history.
+- AMD64/ARM64 GHCR images with tag-gated, validated publishing.
+- Documented support matrix, storage contract and forward migration policy.
 
-## 0.7 direction: operations visibility
+## 1.1 direction: deeper operations
 
-- Opt-in container CPU, memory and network snapshots with strict local retention limits.
-- Per-widget refresh intervals, selectable metrics and clearer last-success information.
+- Time-series container metrics with configurable local retention and storage budgets.
 - Uptime Kuma status-page summaries and reusable integration presets.
-- A Docker diagnostics screen covering socket permissions, agent health and shared-network reachability.
-- Configurable backup retention with a dry-run mode and free-space checks.
+- Per-widget refresh intervals and selectable metrics.
+- Dedicated Docker socket, DNS and shared-network diagnostics.
 
-## 0.8 direction: pages and portability
+## 1.2 direction: distributed installations
 
-- Multiple dashboard pages with page-level import and export.
-- Safer full-instance backup and restore with manifest/version validation.
-- Card templates and a documented community integration contract.
 - Optional remote Docker agents with explicit host identity and per-host permissions.
-- Keyboard-first editing, stronger focus handling and accessibility testing.
-
-## 1.0 readiness
-
-- Stable documented configuration and migration policy.
-- Automated upgrade tests across supported release boundaries.
-- Administrator session management and action audit history.
-- Published support matrix for Docker Engine, Compose, architectures and browsers.
-- Contributor governance, vulnerability reporting process and an explicit project licence chosen by the repository owner.
+- Page/group access policies and read-only operator roles.
+- Full-instance encrypted backup export and validated restore manifests.
+- Card template packs with a documented community contribution contract.
 
 ## Later exploration
 
-- Role-aware page, group and Docker-action access.
-- Personal favourites and per-user presentation settings.
 - Optional identity-provider authentication behind supported reverse proxies.
+- Personal favourites and per-user presentation settings.
 - Safe embedded views only for applications that explicitly permit framing.
+- Repository governance and an explicit source licence selected by the repository owner.
 
 Requests are best proposed as focused GitHub issues with the user problem, expected behaviour, Docker topology and a redacted example configuration.

@@ -6,6 +6,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -427,8 +428,34 @@ class RogueDashboardTests(unittest.TestCase):
                 database.setup("second-admin", "another-secure-password", imported)
             self.assertEqual(database.user_for_token(token), "admin")
             self.assertIsNone(database.login("admin", "incorrect-password"))
-            self.assertIsNotNone(database.login("admin", "a-secure-test-password"))
+            second_login = database.login("admin", "a-secure-test-password")
+            self.assertIsNotNone(second_login)
+            sessions = database.sessions(token)
+            self.assertEqual(len(sessions), 2)
+            self.assertTrue(any(session["current"] for session in sessions))
+            other = next(session for session in sessions if not session["current"])
+            self.assertTrue(database.revoke_session(other["id"], token))
+            self.assertEqual(len(database.sessions(token)), 1)
+            database.audit("admin", "docker.restart", "0123456789ab", "success")
+            self.assertEqual(database.audit_entries()[0]["action"], "docker.restart")
             self.assertEqual(database.dashboard()["meta"]["title"], "Home Lab Dashboard")
+
+    def test_database_migrates_pre_v1_session_table_in_place(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "legacy.sqlite"
+            connection = sqlite3.connect(path)
+            connection.executescript(
+                """
+                CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT, salt TEXT, created_at TEXT);
+                CREATE TABLE sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+                """
+            )
+            connection.commit()
+            connection.close()
+            database = dashboard_app.Database(path)
+            columns = {row[1] for row in database.db.execute("PRAGMA table_info(sessions)")}
+            self.assertTrue({"created_at", "last_seen_at"}.issubset(columns))
+            self.assertIsNotNone(database.db.execute("SELECT name FROM sqlite_master WHERE name='action_audit'").fetchone())
 
     def test_setup_and_authenticated_save_over_http(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -494,6 +521,13 @@ class RogueDashboardTests(unittest.TestCase):
                     restored = json.load(response)
                     self.assertEqual(restored["dashboard"]["pages"][0]["id"], "home")
                     self.assertEqual(restored["summary"]["services"], 12)
+                session_request = Request(f"{base}/api/admin/sessions", headers={"Cookie": cookie})
+                with urlopen(session_request) as response:
+                    self.assertTrue(json.load(response)["sessions"][0]["current"])
+                audit_request = Request(f"{base}/api/admin/audit", headers={"Cookie": cookie})
+                with urlopen(audit_request) as response:
+                    actions = [entry["action"] for entry in json.load(response)["entries"]]
+                    self.assertIn("dashboard.save", actions)
                 dashboard_app.WIDGET_CACHE = (0, [])
                 with urlopen(f"{base}/api/widgets") as response:
                     widgets = json.load(response)

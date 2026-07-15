@@ -9,6 +9,8 @@
 - Docker actions require a logged-in administrator and a confirmation prompt.
 - Passwords use `scrypt` with unique random salts.
 - Session values are stored as hashes and sent through HTTP-only, SameSite Strict cookies.
+- Administrators can review active sessions and revoke any session except the browser currently in use.
+- Administrative actions are stored locally in a bounded audit table without credential values.
 - Login attempts are rate-limited per client address.
 - Imported literal credentials are discarded.
 - Service API credentials are read server-side from `.env` and never returned by widget endpoints.

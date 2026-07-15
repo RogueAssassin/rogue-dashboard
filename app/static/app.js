@@ -263,7 +263,7 @@ function renderDashboard() {
           <div class="mini-stat"><span>⌁</span><div><strong id="load-count">—</strong><span id="uptime-count">System load</span></div></div>
         </section>
         <div class="result-count" id="result-count"></div><div class="groups" id="groups"></div>
-        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.8.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
+        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "1.0.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
       </main>
       ${state.editor ? editorMarkup() : ""}
     </div>`;
@@ -399,7 +399,7 @@ function moveItem(sourceGroup, sourceItem, targetGroup, targetItem) {
 function editorMarkup() {
   return `<aside class="editor-panel">
     <header class="editor-header"><div><span class="eyebrow">LIVE PREVIEW</span><h2>Customise</h2></div><button class="icon-button" id="close-editor">×</button></header>
-    <nav class="editor-tabs"><button data-editor-tab="appearance" class="${state.editorTab === "appearance" ? "active" : ""}">Appearance</button><button data-editor-tab="layout" class="${state.editorTab === "layout" ? "active" : ""}">Layout</button><button data-editor-tab="connect" class="${state.editorTab === "connect" ? "active" : ""}">Connect</button><button data-editor-tab="docker" class="${state.editorTab === "docker" ? "active" : ""}">Docker</button></nav>
+    <nav class="editor-tabs"><button data-editor-tab="appearance" class="${state.editorTab === "appearance" ? "active" : ""}">Appearance</button><button data-editor-tab="layout" class="${state.editorTab === "layout" ? "active" : ""}">Layout</button><button data-editor-tab="connect" class="${state.editorTab === "connect" ? "active" : ""}">Connect</button><button data-editor-tab="docker" class="${state.editorTab === "docker" ? "active" : ""}">Docker</button><button data-editor-tab="admin" class="${state.editorTab === "admin" ? "active" : ""}">Admin</button></nav>
     <div class="editor-content">
       <section class="editor-section editor-tab-panel ${state.editorTab === "appearance" ? "active" : ""}" data-editor-panel="appearance">
         <label class="field"><span>Dashboard title</span><input id="edit-title" value="${escapeHtml(state.draft.meta.title)}"></label>
@@ -437,6 +437,12 @@ function editorMarkup() {
         <div class="notice info">Scan the restricted Docker agent to add cards or safely start, stop and restart containers.</div>
         <button class="button secondary full-button" id="discover-docker">▣ Scan Docker containers</button><div class="container-list" id="container-list"></div>
       </section>
+      <section class="editor-section editor-tab-panel ${state.editorTab === "admin" ? "active" : ""}" data-editor-panel="admin">
+        <div class="section-heading"><div><h3>Administrator sessions</h3><p>Review active sign-ins and revoke sessions you no longer recognise.</p></div><button class="button tiny" id="refresh-admin">↻ Refresh</button></div>
+        <div class="admin-list" id="admin-sessions"><div class="notice info">Open this tab to load sessions.</div></div>
+        <div class="section-heading"><div><h3>Action history</h3><p>The newest 100 administrative events stored locally.</p></div></div>
+        <div class="admin-list" id="admin-audit"><div class="notice info">Open this tab to load action history.</div></div>
+      </section>
     </div>
     <footer class="editor-footer"><button class="button ghost danger-text" id="logout">Sign out</button><button class="button primary" id="save-dashboard">Save changes</button></footer>
   </aside>`;
@@ -454,6 +460,7 @@ function bindEditor() {
     state.editorTab = button.dataset.editorTab;
     document.querySelectorAll("[data-editor-tab]").forEach(entry => entry.classList.toggle("active", entry === button));
     document.querySelectorAll("[data-editor-panel]").forEach(panel => panel.classList.toggle("active", panel.dataset.editorPanel === state.editorTab));
+    if (state.editorTab === "admin") loadAdministration();
   });
   document.getElementById("edit-theme").value = state.draft.meta.theme;
   document.getElementById("edit-density").value = state.draft.meta.density;
@@ -524,8 +531,33 @@ function bindEditor() {
   document.getElementById("editor-import").onchange = importInEditor;
   document.getElementById("export-json").onclick = exportJson;
   document.getElementById("refresh-monitor").onclick = () => refreshRuntime(true);
+  document.getElementById("refresh-admin").onclick = loadAdministration;
   renderGroupEditor();
   renderPageEditor();
+}
+
+async function loadAdministration() {
+  const sessionsBox = document.getElementById("admin-sessions"), auditBox = document.getElementById("admin-audit");
+  if (!sessionsBox || !auditBox) return;
+  sessionsBox.innerHTML = `<div class="notice info">Loading sessions…</div>`;
+  auditBox.innerHTML = `<div class="notice info">Loading action history…</div>`;
+  const [sessions, audit] = await Promise.allSettled([request("/api/admin/sessions"), request("/api/admin/audit")]);
+  if (sessions.status === "fulfilled") {
+    sessionsBox.innerHTML = sessions.value.sessions.map(session => `<div class="admin-row"><div><strong>${session.current ? "Current session" : `Session ${escapeHtml(session.id)}`}</strong><span>Last seen ${escapeHtml(new Date(session.lastSeenAt).toLocaleString())} · expires ${escapeHtml(new Date(session.expiresAt * 1000).toLocaleDateString())}</span></div>${session.current ? `<span class="protected-chip">Current</span>` : `<button class="button tiny danger-text" data-revoke-session="${escapeHtml(session.id)}">Revoke</button>`}</div>`).join("") || `<div class="notice info">No active sessions.</div>`;
+    sessionsBox.querySelectorAll("[data-revoke-session]").forEach(button => button.onclick = () => revokeSession(button.dataset.revokeSession));
+  } else sessionsBox.innerHTML = `<div class="notice error">${escapeHtml(sessions.reason.message)}</div>`;
+  if (audit.status === "fulfilled") {
+    auditBox.innerHTML = audit.value.entries.map(entry => `<div class="admin-row"><span class="widget-state-dot ${entry.outcome === "success" ? "ok" : "error"}"></span><div><strong>${escapeHtml(entry.action)}</strong><span>${escapeHtml(entry.username)} · ${escapeHtml(entry.target)} · ${escapeHtml(new Date(entry.occurredAt).toLocaleString())}</span></div><span class="protected-chip">${escapeHtml(entry.outcome)}</span></div>`).join("") || `<div class="notice info">No administrative actions recorded yet.</div>`;
+  } else auditBox.innerHTML = `<div class="notice error">${escapeHtml(audit.reason.message)}</div>`;
+}
+
+async function revokeSession(sessionId) {
+  if (!confirm(`Revoke session ${sessionId}?`)) return;
+  try {
+    const result = await request("/api/admin/sessions/revoke", { method: "POST", body: JSON.stringify({ sessionId }) });
+    toast(result.revoked ? "Session revoked" : "Session was already inactive");
+    await loadAdministration();
+  } catch (error) { toast(error.message); }
 }
 
 function renderPageEditor() {

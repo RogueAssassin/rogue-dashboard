@@ -2,6 +2,15 @@
 
 Rogue Dashboard follows semantic versioning for published container tags. Detailed upgrade notes live in `docs/`.
 
+## 1.0.0
+
+- Added active administrator-session review and protected revocation.
+- Added a bounded, local administrative action history for login, logout, dashboard saves and Docker actions.
+- Added automatic in-place migration for pre-1.0 session tables.
+- Published a support matrix, migration policy and complete deployment guide.
+
+See [the 1.0.0 release notes](docs/RELEASE_1.0.0.md).
+
 ## 0.8.0
 
 - Added up to 20 named dashboard pages with page-aware groups and Docker discovery.
