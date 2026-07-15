@@ -220,6 +220,7 @@ a { color: inherit; }
 .container-row { grid-template-columns: auto minmax(0, 1fr) auto; }
 .container-actions { display: flex; align-items: center; gap: 5px; }
 .container-row .container-networks { color: color-mix(in srgb, var(--accent-secondary) 62%, var(--muted)); }
+.container-row .container-runtime { color: var(--text); font-variant-numeric: tabular-nums; }
 .container-actions .is-added { color: #3ed995; border-color: rgba(62,217,149,.32); opacity: 1; }
 .protected-chip { padding: 4px 7px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: .58rem; font-weight: 800; text-transform: uppercase; }
 .container-state { width: 8px; height: 8px; border-radius: 50%; background: #6f7786; }

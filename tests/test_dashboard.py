@@ -353,6 +353,20 @@ class RogueDashboardTests(unittest.TestCase):
         self.assertEqual(containers[0]["networks"], ["media-net", "rogueroute-gpx"])
         self.assertNotIn("unrelated.secret", containers[0]["labels"])
 
+    def test_docker_stats_are_normalised_without_exposing_raw_engine_data(self):
+        stats = dashboard_app.normalise_container_stats({
+            "cpu_stats": {"cpu_usage": {"total_usage": 300, "percpu_usage": [1, 1]}, "system_cpu_usage": 2000, "online_cpus": 2},
+            "precpu_stats": {"cpu_usage": {"total_usage": 100}, "system_cpu_usage": 1000},
+            "memory_stats": {"usage": 1_000_000, "limit": 4_000_000, "stats": {"inactive_file": 100_000}},
+            "networks": {"eth0": {"rx_bytes": 1000, "tx_bytes": 500}, "eth1": {"rx_bytes": 250, "tx_bytes": 100}},
+            "secret_raw_field": "must not leave the agent",
+        })
+        self.assertEqual(stats["cpuPercent"], 40.0)
+        self.assertEqual(stats["memoryUsed"], 900_000)
+        self.assertEqual(stats["networkRx"], 1250)
+        self.assertEqual(stats["networkTx"], 600)
+        self.assertNotIn("secret_raw_field", stats)
+
     def test_system_stats_reports_running_and_total_containers(self):
         containers = [{"state": "running"}, {"state": "running"}, {"state": "exited"}]
         with patch.object(dashboard_app, "containers_from_agent", return_value=containers):

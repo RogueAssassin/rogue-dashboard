@@ -25,7 +25,7 @@ import threading
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 import zipfile
 
@@ -33,7 +33,7 @@ from importer import DEFAULT_DASHBOARD, import_homepage, suggested_widget
 from integrations import SUPPORTED_WIDGETS, collect_widget
 
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 PORT = int(os.environ.get("PORT", "8080"))
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8081"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -366,17 +366,62 @@ class UnixHTTPConnection(HTTPConnection):
         self.sock.connect(self.socket_path)
 
 
-def docker_containers() -> list[dict[str, Any]]:
+def docker_request(path: str, maximum: int = 5_000_000) -> Any:
     connection = UnixHTTPConnection(DOCKER_SOCKET)
     try:
-        connection.request("GET", "/containers/json?all=1", headers={"Accept": "application/json"})
+        connection.request("GET", path, headers={"Accept": "application/json"})
         response = connection.getresponse()
         if response.status >= 400:
             raise RuntimeError(f"Docker Engine returned HTTP {response.status}")
-        raw = json.loads(response.read(5_000_000))
+        return json.loads(response.read(maximum))
     finally:
         connection.close()
-    return normalise_containers(raw)
+
+
+def docker_containers(include_stats: bool = False) -> list[dict[str, Any]]:
+    raw = docker_request("/containers/json?all=1")
+    containers = normalise_containers(raw)
+    if include_stats:
+        running = [item for item in containers if item["state"] == "running"][:100]
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            snapshots = list(pool.map(docker_container_stats, [item["id"] for item in running]))
+        for container, snapshot in zip(running, snapshots):
+            container["stats"] = snapshot
+    return containers
+
+
+def normalise_container_stats(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {"available": False}
+    cpu = raw.get("cpu_stats") or {}
+    previous_cpu = raw.get("precpu_stats") or {}
+    cpu_delta = (cpu.get("cpu_usage") or {}).get("total_usage", 0) - (previous_cpu.get("cpu_usage") or {}).get("total_usage", 0)
+    system_delta = cpu.get("system_cpu_usage", 0) - previous_cpu.get("system_cpu_usage", 0)
+    online_cpus = cpu.get("online_cpus") or len((cpu.get("cpu_usage") or {}).get("percpu_usage") or []) or 1
+    cpu_percent = max(0.0, cpu_delta / system_delta * online_cpus * 100) if system_delta > 0 and cpu_delta >= 0 else 0.0
+    memory = raw.get("memory_stats") or {}
+    cache = (memory.get("stats") or {}).get("inactive_file", (memory.get("stats") or {}).get("cache", 0))
+    memory_used = max(0, int(memory.get("usage", 0)) - int(cache or 0))
+    memory_limit = max(0, int(memory.get("limit", 0)))
+    networks = raw.get("networks") or {}
+    rx_bytes = sum(int(item.get("rx_bytes", 0)) for item in networks.values() if isinstance(item, dict)) if isinstance(networks, dict) else 0
+    tx_bytes = sum(int(item.get("tx_bytes", 0)) for item in networks.values() if isinstance(item, dict)) if isinstance(networks, dict) else 0
+    return {
+        "available": True,
+        "cpuPercent": round(cpu_percent, 1),
+        "memoryUsed": memory_used,
+        "memoryLimit": memory_limit,
+        "networkRx": rx_bytes,
+        "networkTx": tx_bytes,
+    }
+
+
+def docker_container_stats(container_id: str) -> dict[str, Any]:
+    try:
+        query = urlencode({"stream": "false", "one-shot": "true"})
+        return normalise_container_stats(docker_request(f"/containers/{container_id}/stats?{query}", 2_000_000))
+    except Exception:
+        return {"available": False}
 
 
 def normalise_containers(raw: Any) -> list[dict[str, Any]]:
@@ -441,11 +486,12 @@ def docker_action(container_id: str, action: str) -> None:
         connection.close()
 
 
-def containers_from_agent() -> list[dict[str, Any]]:
+def containers_from_agent(include_stats: bool = False) -> list[dict[str, Any]]:
     if not DOCKER_AGENT_URL:
-        return docker_containers()
+        return docker_containers(include_stats)
+    suffix = "?stats=1" if include_stats else ""
     request = Request(
-        f"{DOCKER_AGENT_URL.rstrip('/')}/containers",
+        f"{DOCKER_AGENT_URL.rstrip('/')}/containers{suffix}",
         headers={"Authorization": f"Bearer {DOCKER_AGENT_TOKEN}"},
     )
     with urlopen(request, timeout=5) as response:
@@ -693,7 +739,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not self.require_admin():
                 return
             try:
-                self.json_response({"containers": containers_from_agent()})
+                self.json_response({"containers": containers_from_agent(include_stats=True)})
             except Exception as error:
                 self.json_response({"containers": [], "error": str(error)}, HTTPStatus.SERVICE_UNAVAILABLE)
         elif path.startswith("/api/"):
@@ -925,12 +971,14 @@ class AgentHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         try:
-            if self.path == "/health":
+            parsed = urlparse(self.path)
+            if parsed.path == "/health":
                 self.respond({"ok": True})
-            elif self.path == "/containers":
+            elif parsed.path == "/containers":
                 if not self.authorized():
                     return
-                self.respond(docker_containers())
+                include_stats = parse_qs(parsed.query).get("stats") == ["1"]
+                self.respond(docker_containers(True) if include_stats else docker_containers())
             else:
                 self.respond({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except Exception as error:

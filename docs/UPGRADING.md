@@ -24,12 +24,14 @@ The script verifies Docker, refreshes host-specific socket access, creates a mis
 
 Backups are written to `backups/YYYYMMDD-HHMMSS/`. If the new container does not become healthy, the script restores `.env` and retags the previously running local image before restarting the stack.
 
+Backups are retained indefinitely by default. To keep only the newest ten successful upgrade backups, set `RGDASH_BACKUP_KEEP=10` in `.env`. Pruning happens only after the replacement is healthy; failed upgrades never prune recovery data.
+
 ## Pin or roll back a release
 
 Set a version in `.env`:
 
 ```dotenv
-RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.6.0
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.7.0
 ```
 
 Then run:

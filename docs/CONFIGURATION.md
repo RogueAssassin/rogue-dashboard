@@ -12,6 +12,7 @@ docker compose up -d --force-recreate dashboard
 | --- | --- | --- |
 | `TZ` | `Etc/UTC` | Container timezone. Use an IANA name such as `Europe/London`. |
 | `RGDASH_PORT` | `7805` | Host port published for the browser. |
+| `RGDASH_BACKUP_KEEP` | `0` | Successful upgrade backups to retain. `0` disables automatic pruning. |
 | `RGDASH_IMAGE` | `ghcr.io/rogueassassin/rogue-dashboard:latest` | Optional release tag or digest pin. |
 | `PUID` / `PGID` | `1000` | Host user and group used for persistent files. |
 | `DOCKER_GID` | `999` | Group ID of `/var/run/docker.sock`; the installer detects it. |

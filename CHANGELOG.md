@@ -2,6 +2,15 @@
 
 Rogue Dashboard follows semantic versioning for published container tags. Detailed upgrade notes live in `docs/`.
 
+## 0.7.0
+
+- Added opt-in live CPU, memory and network counters to authenticated Docker discovery.
+- Kept raw Docker statistics inside the restricted agent and returned only a bounded metric summary.
+- Added opt-in successful-backup retention with failed-upgrade protection.
+- Updated the repository's GitHub Actions to their validated current major versions.
+
+See [the 0.7.0 release notes](docs/RELEASE_0.7.0.md).
+
 ## 0.6.0
 
 - Added Docker network visibility and duplicate-safe container discovery.

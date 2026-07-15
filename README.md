@@ -6,12 +6,12 @@
 
 **A colourful, local-first command centre for the containers you run.**
 
-[![Release](https://img.shields.io/badge/release-0.6.0-9b5cff?style=for-the-badge)](https://github.com/RogueAssassin/rogue-dashboard)
+[![Release](https://img.shields.io/badge/release-0.7.0-9b5cff?style=for-the-badge)](https://github.com/RogueAssassin/rogue-dashboard)
 [![Container](https://img.shields.io/badge/GHCR-ready-00d9ff?style=for-the-badge&logo=docker&logoColor=white)](https://github.com/RogueAssassin/rogue-dashboard/pkgs/container/rogue-dashboard)
 [![No Node](https://img.shields.io/badge/frontend-no_build_step-ff2bd6?style=for-the-badge)](#why-rogue-dashboard)
 [![Platforms](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-41d99b?style=for-the-badge)](#install-from-scratch)
 
-Version **0.6.0** · Docker Compose deployment · Browser-based setup
+Version **0.7.0** · Docker Compose deployment · Browser-based setup
 
 </div>
 
@@ -96,7 +96,7 @@ docker compose down
 Normal installations pull `ghcr.io/rogueassassin/rogue-dashboard:latest`; they do not build application code. To pin this release, add this to `.env`:
 
 ```dotenv
-RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.6.0
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.7.0
 ```
 
 ## Connect live service widgets
@@ -181,6 +181,7 @@ Do not run `docker compose down -v` as part of an upgrade. Read [Upgrading and r
 - [Security model](docs/SECURITY.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Changelog](CHANGELOG.md)
+- [0.7.0 release notes](docs/RELEASE_0.7.0.md)
 - [0.6.0 release notes](docs/RELEASE_0.6.0.md)
 - [0.5.0 release notes](docs/RELEASE_0.5.0.md)
 - [Roadmap](docs/ROADMAP.md)

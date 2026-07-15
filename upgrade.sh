@@ -149,6 +149,22 @@ done
 upgrade_finished=1
 trap - EXIT
 
+backup_keep=$(sed -n 's/^RGDASH_BACKUP_KEEP=//p' .env | tail -n 1)
+backup_keep=${backup_keep:-0}
+case "$backup_keep" in
+  *[!0-9]*) echo "WARNING: RGDASH_BACKUP_KEEP must be a whole number; no backups were removed." ;;
+  0) : ;;
+  *)
+    backup_index=0
+    find backups -mindepth 1 -maxdepth 1 -type d -print | sort -r | while IFS= read -r saved_backup; do
+      backup_index=$((backup_index + 1))
+      if [ "$backup_index" -gt "$backup_keep" ]; then
+        rm -rf -- "$saved_backup"
+      fi
+    done
+    ;;
+esac
+
 echo
 running_version=$(docker exec rogue-dashboard python -c 'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/api/ping"))["version"])' 2>/dev/null || true)
 echo "Rogue Dashboard ${running_version:-image} is ready at http://localhost:$port"
