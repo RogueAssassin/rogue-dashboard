@@ -20,7 +20,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 
 
-USER_AGENT = "Rogue-Dashboard/0.5.0"
+USER_AGENT = "Rogue-Dashboard/0.6.0"
 MAX_RESPONSE = 2_000_000
 LARGE_LIBRARY_RESPONSE = 24_000_000
 TIMEOUT = 6
@@ -423,7 +423,7 @@ def _safe_error(error: Exception) -> tuple[str, int | None]:
     if isinstance(error, URLError):
         reason = error.reason
         if isinstance(reason, socket.gaierror):
-            return "The container hostname could not be resolved. Ensure Rogue Dashboard is attached to media-net.", None
+            return "The container hostname could not be resolved. Ensure Rogue Dashboard shares a configured Docker network with the service.", None
         if isinstance(reason, ConnectionRefusedError):
             return "The container resolved, but the configured private port refused the connection.", None
         if isinstance(reason, (TimeoutError, socket.timeout)):

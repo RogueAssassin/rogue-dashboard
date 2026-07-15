@@ -11,10 +11,11 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
-from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -274,7 +275,7 @@ class RogueDashboardTests(unittest.TestCase):
         widget["secretRefs"] = ["HOMEPAGE_VAR_QBITTORRENT_USERNAME", "HOMEPAGE_VAR_QBITTORRENT_PASSWORD"]
         widget["secretBindings"] = {"username": "HOMEPAGE_VAR_QBITTORRENT_USERNAME", "password": "HOMEPAGE_VAR_QBITTORRENT_PASSWORD"}
         migrated = dashboard_app.validate_dashboard(legacy)
-        self.assertEqual(migrated["version"], 3)
+        self.assertEqual(migrated["version"], 5)
         self.assertEqual(migrated["meta"]["theme"], "neon")
         self.assertEqual(migrated["meta"]["density"], "compact")
         migrated_widget = migrated["groups"][0]["items"][0]["widget"]
@@ -297,6 +298,69 @@ class RogueDashboardTests(unittest.TestCase):
         bookmark_groups = [group["name"] for group in migrated["groups"] if group["kind"] == "bookmarks"]
         self.assertEqual(bookmark_groups, ["Developer resources", "Documentation", "Project"])
 
+    def test_v05_migrates_rogueroute_cards_to_private_health_endpoints(self):
+        current = {
+            "version": 3,
+            "meta": {"title": "Docker"},
+            "groups": [{
+                "id": "routes", "name": "Routes", "kind": "services", "columns": 3, "items": [
+                    {"id": "web", "name": "RogueRoute-GPX", "href": "http://old", "type": "service"},
+                    {"id": "osrm", "name": "rogueroute-osrm", "href": "http://old", "type": "service"},
+                    {"id": "manager", "name": "rogueroute-gpx-manager", "href": "http://old", "type": "service"},
+                ],
+            }],
+        }
+        with patch.object(dashboard_app, "ROGUEROUTE_PUBLIC_URL", "https://gpx.example.com"):
+            migrated = dashboard_app.validate_dashboard(current)
+        web, osrm, manager = migrated["groups"][0]["items"]
+        self.assertEqual(web["href"], "https://gpx.example.com")
+        self.assertEqual(web["monitorUrl"], "http://rogueroute-gpx-web:9080/api/health")
+        self.assertEqual(osrm["href"], "")
+        self.assertEqual(osrm["monitorUrl"], "http://rogueroute-gpx-osrm:5000/")
+        self.assertEqual(manager["href"], "")
+        self.assertEqual(manager["monitorUrl"], "http://rogueroute-gpx-manager:9090/health")
+        self.assertTrue(all(item["icon"].startswith("/icons/rogueroute-") for item in (web, osrm, manager)))
+        self.assertEqual(
+            [item["containerName"] for item in (web, osrm, manager)],
+            ["rogueroute-gpx-web", "rogueroute-gpx-osrm", "rogueroute-gpx-manager"],
+        )
+
+    def test_docker_container_summary_includes_networks_and_stable_order(self):
+        raw = [
+            {
+                "Id": "b" * 64,
+                "Names": ["/stopped"],
+                "Image": "example/stopped:latest",
+                "State": "exited",
+                "Status": "Exited (0)",
+                "Ports": [],
+                "Labels": {},
+                "NetworkSettings": {"Networks": {"media-net": {}}},
+            },
+            {
+                "Id": "a" * 64,
+                "Names": ["/running"],
+                "Image": "example/running:latest",
+                "State": "running",
+                "Status": "Up 1 minute",
+                "Ports": [{"PrivatePort": 9080, "PublicPort": 9080, "Type": "tcp"}],
+                "Labels": {"com.docker.compose.project": "routes", "unrelated.secret": "discard"},
+                "NetworkSettings": {"Networks": {"rogueroute-gpx": {}, "media-net": {}}},
+            },
+        ]
+        containers = dashboard_app.normalise_containers(raw)
+        self.assertEqual([item["name"] for item in containers], ["running", "stopped"])
+        self.assertEqual(containers[0]["networks"], ["media-net", "rogueroute-gpx"])
+        self.assertNotIn("unrelated.secret", containers[0]["labels"])
+
+    def test_system_stats_reports_running_and_total_containers(self):
+        containers = [{"state": "running"}, {"state": "running"}, {"state": "exited"}]
+        with patch.object(dashboard_app, "containers_from_agent", return_value=containers):
+            stats = dashboard_app.system_stats()
+        self.assertEqual(stats["runningContainers"], 2)
+        self.assertEqual(stats["totalContainers"], 3)
+        self.assertEqual(stats["dockerStatus"], "ok")
+
     def test_reads_homepage_zip_without_extracting_paths(self):
         archive = BytesIO()
         with ZipFile(archive, "w") as output:
@@ -306,12 +370,29 @@ class RogueDashboardTests(unittest.TestCase):
         self.assertIn("services.yaml", files)
         self.assertNotIn("ignored.txt", files)
 
+    def test_rejects_zip_entry_and_expansion_bombs(self):
+        too_many = BytesIO()
+        with ZipFile(too_many, "w", ZIP_DEFLATED) as output:
+            for index in range(dashboard_app.MAX_ARCHIVE_ENTRIES + 1):
+                output.writestr(f"ignored-{index}.txt", "")
+        with self.assertRaisesRegex(ValueError, "more than"):
+            dashboard_app.read_import_files({"zipBase64": base64.b64encode(too_many.getvalue()).decode()})
+
+        expanded = BytesIO()
+        with ZipFile(expanded, "w", ZIP_DEFLATED) as output:
+            for index in range(6):
+                output.writestr(f"folder-{index}/services.yaml", "A" * 900_000)
+        with self.assertRaisesRegex(ValueError, "expands beyond"):
+            dashboard_app.read_import_files({"zipBase64": base64.b64encode(expanded.getvalue()).decode()})
+
     def test_database_authentication_and_persistence(self):
         with tempfile.TemporaryDirectory() as directory:
             database = dashboard_app.Database(Path(directory) / "dashboard.sqlite")
             self.assertTrue(database.setup_required())
             imported = import_homepage(self.files)["dashboard"]
             token, _ = database.setup("admin", "a-secure-test-password", imported)
+            with self.assertRaises(dashboard_app.SetupCompleted):
+                database.setup("second-admin", "another-secure-password", imported)
             self.assertEqual(database.user_for_token(token), "admin")
             self.assertIsNone(database.login("admin", "incorrect-password"))
             self.assertIsNotNone(database.login("admin", "a-secure-test-password"))
@@ -325,6 +406,7 @@ class RogueDashboardTests(unittest.TestCase):
             dashboard_app.CUSTOM_DIR = Path(directory) / "custom"
             (dashboard_app.CUSTOM_DIR / "icons").mkdir(parents=True)
             (dashboard_app.CUSTOM_DIR / "icons" / "example.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+            (dashboard_app.CUSTOM_DIR / "icons" / "blocked.html").write_text("<script>alert(1)</script>")
             server = ThreadingHTTPServer(("127.0.0.1", 0), dashboard_app.DashboardHandler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -334,6 +416,7 @@ class RogueDashboardTests(unittest.TestCase):
                     bootstrap = json.load(response)
                     self.assertTrue(bootstrap["setupRequired"])
                     self.assertEqual(bootstrap["version"], dashboard_app.VERSION)
+                    self.assertEqual(response.headers["Cross-Origin-Opener-Policy"], "same-origin")
                 imported = import_homepage(self.files)["dashboard"]
                 request = Request(
                     f"{base}/api/setup",
@@ -346,8 +429,19 @@ class RogueDashboardTests(unittest.TestCase):
                     self.assertEqual(response.status, 201)
                 with urlopen(f"{base}/custom/icons/example.svg") as response:
                     self.assertEqual(response.headers.get_content_type(), "image/svg+xml")
+                with urlopen(f"{base}/favicon.svg") as response:
+                    self.assertEqual(response.headers.get_content_type(), "image/svg+xml")
+                for name in ("rogueroute-gpx.svg", "rogueroute-osrm.svg", "rogueroute-manager.svg"):
+                    with urlopen(f"{base}/icons/{name}") as response:
+                        self.assertEqual(response.headers.get_content_type(), "image/svg+xml")
                 with self.assertRaises(HTTPError) as context:
                     urlopen(f"{base}/custom/../not-allowed.svg")
+                self.assertEqual(context.exception.code, 404)
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(f"{base}/custom/icons/blocked.html")
+                self.assertEqual(context.exception.code, 404)
+                with self.assertRaises(HTTPError) as context:
+                    urlopen(f"{base}/missing-script.js")
                 self.assertEqual(context.exception.code, 404)
                 imported["meta"]["title"] = "Updated dashboard"
                 request = Request(

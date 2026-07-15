@@ -53,7 +53,17 @@ media_network=$(sed -n 's/^MEDIA_NETWORK=//p' .env | tail -n 1)
 media_network=${media_network:-media-net}
 docker network inspect "$media_network" >/dev/null 2>&1 || docker network create "$media_network" >/dev/null
 
-compose() { docker compose --env-file .env -f docker-compose.yaml "$@"; }
+extra_network=$(sed -n 's/^RGDASH_EXTRA_NETWORK=//p' .env | tail -n 1)
+if [ -n "$extra_network" ]; then
+  if ! docker network inspect "$extra_network" >/dev/null 2>&1; then
+    echo "The extra Docker network '$extra_network' does not exist."
+    echo "Start its owning stack first, or correct RGDASH_EXTRA_NETWORK in .env."
+    exit 1
+  fi
+  compose() { docker compose --env-file .env -f docker-compose.yaml -f docker-compose.extra-network.yaml "$@"; }
+else
+  compose() { docker compose --env-file .env -f docker-compose.yaml "$@"; }
+fi
 compose config -q
 
 echo "Pulling Rogue Dashboard from GHCR..."
@@ -76,3 +86,4 @@ port=${port:-7805}
 echo
 echo "Rogue Dashboard is ready at http://localhost:$port"
 echo "Nginx Proxy Manager target: http://rogue-dashboard:8080"
+if [ -n "$extra_network" ]; then echo "Extra application network: $extra_network"; fi

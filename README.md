@@ -6,12 +6,12 @@
 
 **A colourful, local-first command centre for the containers you run.**
 
-[![Release](https://img.shields.io/badge/release-0.5.0-9b5cff?style=for-the-badge)](https://github.com/RogueAssassin/rogue-dashboard)
+[![Release](https://img.shields.io/badge/release-0.6.0-9b5cff?style=for-the-badge)](https://github.com/RogueAssassin/rogue-dashboard)
 [![Container](https://img.shields.io/badge/GHCR-ready-00d9ff?style=for-the-badge&logo=docker&logoColor=white)](https://github.com/RogueAssassin/rogue-dashboard/pkgs/container/rogue-dashboard)
 [![No Node](https://img.shields.io/badge/frontend-no_build_step-ff2bd6?style=for-the-badge)](#why-rogue-dashboard)
 [![Platforms](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-41d99b?style=for-the-badge)](#install-from-scratch)
 
-Version **0.5.0** · Docker Compose deployment · Browser-based setup
+Version **0.6.0** · Docker Compose deployment · Browser-based setup
 
 </div>
 
@@ -22,7 +22,7 @@ Rogue Dashboard turns a Docker host into an approachable control panel. It bring
 | | What you get |
 | --- | --- |
 | 🎨 | **Make it yours** — six colour presets, two accent colours, neon glow, card opacity, density and custom backgrounds. |
-| 📦 | **See Docker clearly** — discover containers, inspect their state and create cards from running services. |
+| 📦 | **See Docker clearly** — discover every container, see its networks and state, and create duplicate-safe cards. |
 | ⚡ | **Live service data** — metrics for qBittorrent, Radarr, Sonarr, Prowlarr, Seerr, Bazarr, Tautulli and Pi-hole. |
 | 🧩 | **Edit in the browser** — add cards, rearrange groups, change columns and preview appearance changes live. |
 | 🛡️ | **A safer Docker boundary** — the web app never mounts the Docker socket; a private, restricted agent handles approved operations. |
@@ -96,7 +96,7 @@ docker compose down
 Normal installations pull `ghcr.io/rogueassassin/rogue-dashboard:latest`; they do not build application code. To pin this release, add this to `.env`:
 
 ```dotenv
-RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.5.0
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.6.0
 ```
 
 ## Connect live service widgets
@@ -123,6 +123,16 @@ RGDASH_PIHOLE_KEY=
 Then open **Customise → Connect → Test now**. The connection centre reports DNS reachability, port access, API authentication, response time and the names of missing environment variables. Secret values are never sent to the browser.
 
 Service URLs should normally use Docker DNS, such as `http://radarr:7878`, rather than a public proxy address. The dashboard and target service must share a Docker network.
+
+If an application stack lives on a second isolated network, set its existing network name in `.env`:
+
+```dotenv
+RGDASH_EXTRA_NETWORK=application-network
+```
+
+Then run `./upgrade.sh` or `./install.sh`. The scripts automatically load `docker-compose.extra-network.yaml` and attach only the web dashboard to that network. The restricted Docker agent remains isolated. See [Multiple Docker networks](docs/INSTALLATION.md#multiple-docker-networks) for discovery and verification commands.
+
+RogueRoute GPX containers receive dedicated local icons and private health endpoints when added through **Customise → Docker**. Set `RGDASH_ROGUEROUTE_URL` to provide the public link for the Web card; OSRM and Manager remain status-only. Docker discovery displays each container's attached networks and marks containers that already have a card.
 
 ## Themes, icons and backgrounds
 
@@ -170,6 +180,8 @@ Do not run `docker compose down -v` as part of an upgrade. Read [Upgrading and r
 - [Upgrading and recovery](docs/UPGRADING.md)
 - [Security model](docs/SECURITY.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Changelog](CHANGELOG.md)
+- [0.6.0 release notes](docs/RELEASE_0.6.0.md)
 - [0.5.0 release notes](docs/RELEASE_0.5.0.md)
 - [Roadmap](docs/ROADMAP.md)
 

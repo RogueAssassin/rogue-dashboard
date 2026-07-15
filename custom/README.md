@@ -9,7 +9,7 @@ Rogue Dashboard serves this folder at `/custom/` and mounts it read-only inside 
 3. Set **Icon URL or local path** to `/custom/icons/my-service.svg`.
 4. Save the dashboard.
 
-SVG is recommended for sharp results at every display size. For raster artwork, use a transparent square image of at least 128×128 pixels. Keep filenames simple, lowercase and free of spaces.
+SVG is recommended for sharp results at every display size. For raster artwork, use a transparent square image of at least 128×128 pixels. Keep filenames simple, lowercase and free of spaces. Supported files are AVIF, GIF, ICO, JPEG, PNG, SVG and WebP, with a 10 MB limit per file.
 
 ## Add a background
 
@@ -30,4 +30,3 @@ chmod 644 custom/icons/* custom/backgrounds/*
 ```
 
 Do not store passwords, API keys or private configuration in this directory. Everything under `/custom/` is available to authenticated and unauthenticated dashboard visitors.
-

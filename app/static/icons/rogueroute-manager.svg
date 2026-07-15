@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RogueRoute Manager">
+  <defs><linearGradient id="m" x1="16" y1="50" x2="49" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#41d99b"/><stop offset="1" stop-color="#b15cff"/></linearGradient></defs>
+  <rect x="3" y="3" width="58" height="58" rx="16" fill="#0c1020" stroke="#293754" stroke-width="2"/>
+  <path d="M32 11 49 18v12c0 11-6.7 19.6-17 24-10.3-4.4-17-13-17-24V18l17-7Z" fill="url(#m)" opacity=".95"/>
+  <circle cx="32" cy="31" r="9" fill="#10182b" stroke="#fff" stroke-width="3"/>
+  <path d="M32 18v5m0 16v5M19 31h5m16 0h5m-22-9 4 4m10 10 4 4m0-18-4 4M27 36l-4 4" stroke="#eafff8" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="31" r="3" fill="#41d99b"/>
+</svg>

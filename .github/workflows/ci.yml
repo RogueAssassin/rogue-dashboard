@@ -8,9 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -26,16 +31,19 @@ jobs:
       - name: Validate Python and shell syntax
         run: |
           python -m compileall -q app
-          sh -n install.sh migrate-env.sh upgrade.sh
+          sh -n install.sh migrate-env.sh upgrade.sh scripts/validate-release.sh
+          sh scripts/validate-release.sh
 
       - name: Validate production and developer Compose files
         run: |
           cp .env.example .env
           docker compose -f docker-compose.yaml config -q
           docker compose -f docker-compose.yaml -f docker-compose.build.yaml config -q
+          RGDASH_EXTRA_NETWORK=application-network docker compose -f docker-compose.yaml -f docker-compose.extra-network.yaml config -q
 
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out source
         uses: actions/checkout@v4

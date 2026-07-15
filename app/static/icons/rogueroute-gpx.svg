@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RogueRoute GPX">
+  <defs><linearGradient id="r" x1="8" y1="54" x2="56" y2="10" gradientUnits="userSpaceOnUse"><stop stop-color="#00d9ff"/><stop offset=".5" stop-color="#41d99b"/><stop offset="1" stop-color="#b15cff"/></linearGradient></defs>
+  <rect x="3" y="3" width="58" height="58" rx="16" fill="#091322" stroke="#263958" stroke-width="2"/>
+  <path d="M12 45c9-1 9-19 19-18s9 14 18 7 7-14 7-14" fill="none" stroke="#05101c" stroke-width="9" stroke-linecap="round"/>
+  <path d="M12 45c9-1 9-19 19-18s9 14 18 7 7-14 7-14" fill="none" stroke="url(#r)" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="12" cy="45" r="5" fill="#00d9ff" stroke="#eaffff" stroke-width="2"/><circle cx="31" cy="27" r="5" fill="#41d99b" stroke="#edfff8" stroke-width="2"/><circle cx="56" cy="20" r="5" fill="#b15cff" stroke="#f8edff" stroke-width="2"/>
+</svg>

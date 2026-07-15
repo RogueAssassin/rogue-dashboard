@@ -8,17 +8,53 @@ if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>
   echo "Docker Compose v2 is required to upgrade Rogue Dashboard."
   exit 1
 fi
+if ! docker info >/dev/null 2>&1; then
+  echo "The Docker daemon is not available. Start Docker, then rerun the upgrade."
+  exit 1
+fi
 if [ ! -f docker-compose.yaml ] || [ ! -f .env ] || [ ! -d data ]; then
   echo "Run this from the existing rogue-dashboard folder. Its .env and data directory must still be present."
   exit 1
 fi
 
-compose() { docker compose --env-file .env -f docker-compose.yaml "$@"; }
-compose config -q
+set_value() {
+  key="$1"
+  value="$2"
+  if grep -q "^${key}=" .env; then
+    sed -i "s/^${key}=.*/${key}=${value}/" .env
+  else
+    printf '%s=%s\n' "$key" "$value" >> .env
+  fi
+}
+
+if [ -S /var/run/docker.sock ]; then
+  set_value DOCKER_GID "$(stat -c '%g' /var/run/docker.sock)"
+fi
+
+agent_token=$(sed -n 's/^DOCKER_AGENT_TOKEN=//p' .env | tail -n 1)
+if [ -z "$agent_token" ]; then
+  agent_token=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+  set_value DOCKER_AGENT_TOKEN "$agent_token"
+  echo "Generated the missing private Docker agent token."
+fi
+chmod 600 .env
 
 media_network=$(sed -n 's/^MEDIA_NETWORK=//p' .env | tail -n 1)
 media_network=${media_network:-media-net}
 docker network inspect "$media_network" >/dev/null 2>&1 || docker network create "$media_network" >/dev/null
+
+extra_network=$(sed -n 's/^RGDASH_EXTRA_NETWORK=//p' .env | tail -n 1)
+if [ -n "$extra_network" ]; then
+  if ! docker network inspect "$extra_network" >/dev/null 2>&1; then
+    echo "The extra Docker network '$extra_network' does not exist."
+    echo "Start its owning stack first, or correct RGDASH_EXTRA_NETWORK in .env."
+    exit 1
+  fi
+  compose() { docker compose --env-file .env -f docker-compose.yaml -f docker-compose.extra-network.yaml "$@"; }
+else
+  compose() { docker compose --env-file .env -f docker-compose.yaml "$@"; }
+fi
+compose config -q
 
 env_has_value() {
   awk -v wanted="$1" '
@@ -117,4 +153,5 @@ echo
 running_version=$(docker exec rogue-dashboard python -c 'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/api/ping"))["version"])' 2>/dev/null || true)
 echo "Rogue Dashboard ${running_version:-image} is ready at http://localhost:$port"
 echo "Nginx Proxy Manager target: http://rogue-dashboard:8080"
+if [ -n "$extra_network" ]; then echo "Extra application network: $extra_network"; fi
 echo "Backup: $backup_dir"

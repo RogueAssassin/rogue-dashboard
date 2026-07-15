@@ -30,6 +30,9 @@ const LOCAL_ICONS = {
   uptimekuma: "/icons/uptime-kuma.svg", dockge: "/icons/dockge.svg",
   flaresolverr: "/icons/flaresolverr.svg",
   github: "/icons/github.svg",
+  rogueroutegpx: "/icons/rogueroute-gpx.svg", rogueroutegpxweb: "/icons/rogueroute-gpx.svg",
+  roguerouteosrm: "/icons/rogueroute-osrm.svg", rogueroutegpxosrm: "/icons/rogueroute-osrm.svg",
+  rogueroutemanager: "/icons/rogueroute-manager.svg", rogueroutegpxmanager: "/icons/rogueroute-manager.svg",
 };
 
 const THEME_PRESETS = {
@@ -242,13 +245,13 @@ function renderDashboard() {
         </header>
         <section class="stat-strip" id="stats">
           <div class="hero-time"><span>◷</span><div><strong id="clock">--:--</strong><span id="date">Loading…</span></div></div>
-          <div class="mini-stat"><span>▣</span><div><strong id="container-count">—</strong><span>Containers running</span></div></div>
+          <div class="mini-stat"><span>▣</span><div><strong id="container-count">—</strong><span id="container-label">Containers running</span></div></div>
           <div class="mini-stat"><span>●</span><div><strong id="online-count">—</strong><span>Services online</span></div></div>
           <div class="mini-stat"><span>▤</span><div><strong id="memory-count">—</strong><span id="memory-total">Memory</span></div></div>
           <div class="mini-stat"><span>⌁</span><div><strong id="load-count">—</strong><span id="uptime-count">System load</span></div></div>
         </section>
         <div class="result-count" id="result-count"></div><div class="groups" id="groups"></div>
-        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.5.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
+        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.6.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
       </main>
       ${state.editor ? editorMarkup() : ""}
     </div>`;
@@ -565,10 +568,22 @@ async function discoverDocker() {
   list.innerHTML = `<div class="notice info">Scanning Docker…</div>`;
   try {
     const result = await request("/api/docker/containers");
-    list.innerHTML = result.containers.map((container, index) => `<div class="container-row"><span class="container-state ${container.state === "running" ? "online" : ""}"></span><div><strong>${escapeHtml(container.name)}</strong><span>${escapeHtml(container.image)} · ${container.ports.find(port => port.publicPort)?.publicPort || "no public port"}</span></div><div class="container-actions"><button class="icon-button" data-container="${index}" title="Add card">+</button>${container.labels["rogue.dashboard.protected"] === "true" ? `<span class="protected-chip">Protected</span>` : container.state === "running" ? `<button class="icon-button" data-docker-action="restart" data-index="${index}" title="Restart">↻</button><button class="icon-button danger" data-docker-action="stop" data-index="${index}" title="Stop">■</button>` : `<button class="icon-button" data-docker-action="start" data-index="${index}" title="Start">▶</button>`}</div></div>`).join("") || `<div class="notice info">No containers found.</div>`;
+    list.innerHTML = result.containers.map((container, index) => {
+      const added = isContainerAdded(container);
+      const publicPort = container.ports.find(port => port.publicPort)?.publicPort || "no public port";
+      const networks = container.networks?.length ? container.networks.join(", ") : "no network data";
+      return `<div class="container-row"><span class="container-state ${container.state === "running" ? "online" : ""}"></span><div><strong>${escapeHtml(container.name)}</strong><span>${escapeHtml(container.image)} · ${publicPort}</span><span class="container-networks">Networks: ${escapeHtml(networks)}</span></div><div class="container-actions"><button class="icon-button ${added ? "is-added" : ""}" data-container="${index}" title="${added ? "Card already added" : "Add card"}" ${added ? "disabled" : ""}>${added ? "✓" : "+"}</button>${container.labels["rogue.dashboard.protected"] === "true" ? `<span class="protected-chip">Protected</span>` : container.state === "running" ? `<button class="icon-button" data-docker-action="restart" data-index="${index}" title="Restart">↻</button><button class="icon-button danger" data-docker-action="stop" data-index="${index}" title="Stop">■</button>` : `<button class="icon-button" data-docker-action="start" data-index="${index}" title="Start">▶</button>`}</div></div>`;
+    }).join("") || `<div class="notice info">No containers found.</div>`;
     list.querySelectorAll("[data-container]").forEach(button => button.onclick = () => addContainer(result.containers[Number(button.dataset.container)]));
     list.querySelectorAll("[data-docker-action]").forEach(button => button.onclick = () => runDockerAction(result.containers[Number(button.dataset.index)], button.dataset.dockerAction));
   } catch (error) { list.innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`; }
+}
+
+function isContainerAdded(container) {
+  const wanted = iconKey(container.name);
+  return state.draft.groups.some(group => group.items.some(item =>
+    item.containerName === container.name || (!item.containerName && iconKey(item.name) === wanted)
+  ));
 }
 
 async function runDockerAction(container, action) {
@@ -581,10 +596,29 @@ async function runDockerAction(container, action) {
 }
 
 function addContainer(container) {
-  let group = state.draft.groups.find(entry => entry.kind === "services");
-  if (!group) { addGroup(); group = state.draft.groups.at(-1); group.name = "Services"; }
+  if (isContainerAdded(container)) {
+    toast(`${container.name} already has a dashboard card`);
+    return;
+  }
+  const identity = iconKey(container.name);
   const port = container.ports.find(entry => entry.publicPort) || container.ports[0];
-  group.items.push({ id: uniqueId(container.name), name: container.name, href: port?.publicPort ? `${location.protocol}//${location.hostname}:${port.publicPort}` : "", monitorUrl: port?.privatePort ? `http://${container.name}:${port.privatePort}` : "", description: container.image, type: "service", statusStyle: "dot" });
+  const publicRogueRouteUrl = state.bootstrap?.serviceUrls?.rogueRoute || "";
+  const presets = {
+    rogueroutegpx: { name: "RogueRoute GPX", href: publicRogueRouteUrl || (port?.publicPort ? `${location.protocol}//${location.hostname}:${port.publicPort}` : ""), monitorUrl: "http://rogueroute-gpx-web:9080/api/health", description: "Route generator", icon: "/icons/rogueroute-gpx.svg" },
+    rogueroutegpxweb: { name: "RogueRoute GPX", href: publicRogueRouteUrl || (port?.publicPort ? `${location.protocol}//${location.hostname}:${port.publicPort}` : ""), monitorUrl: "http://rogueroute-gpx-web:9080/api/health", description: "Route generator", icon: "/icons/rogueroute-gpx.svg" },
+    roguerouteosrm: { name: "RogueRoute OSRM", href: "", monitorUrl: "http://rogueroute-gpx-osrm:5000/", description: "Local route engine", icon: "/icons/rogueroute-osrm.svg" },
+    rogueroutegpxosrm: { name: "RogueRoute OSRM", href: "", monitorUrl: "http://rogueroute-gpx-osrm:5000/", description: "Local route engine", icon: "/icons/rogueroute-osrm.svg" },
+    rogueroutemanager: { name: "RogueRoute Manager", href: "", monitorUrl: "http://rogueroute-gpx-manager:9090/health", description: "Private region manager", icon: "/icons/rogueroute-manager.svg" },
+    rogueroutegpxmanager: { name: "RogueRoute Manager", href: "", monitorUrl: "http://rogueroute-gpx-manager:9090/health", description: "Private region manager", icon: "/icons/rogueroute-manager.svg" },
+  };
+  const preset = presets[identity];
+  let group = preset ? state.draft.groups.find(entry => entry.kind === "services" && /gpx|rogueroute/i.test(entry.name)) : state.draft.groups.find(entry => entry.kind === "services");
+  if (!group) {
+    group = { id: uniqueId(preset ? "rogueroute-gpx" : "services"), name: preset ? "RogueRoute GPX" : "Services", kind: "services", columns: 3, collapsed: false, items: [] };
+    state.draft.groups.push(group);
+  }
+  const defaults = preset || { name: container.name, href: port?.publicPort ? `${location.protocol}//${location.hostname}:${port.publicPort}` : "", monitorUrl: port?.privatePort ? `http://${container.name}:${port.privatePort}` : "", description: container.image, icon: "" };
+  group.items.push({ id: uniqueId(defaults.name), ...defaults, containerName: container.name, type: "service", statusStyle: "dot" });
   toast(`${container.name} added to ${group.name}`); renderGroupEditor(); renderGroups();
 }
 
@@ -631,6 +665,7 @@ function saveItem(event) {
   const { groupIndex, itemIndex } = state.editingItem;
   const previous = itemIndex === undefined ? null : state.draft.groups[groupIndex].items[itemIndex];
   const item = { id: previous?.id || uniqueId(document.getElementById("item-name").value), name: document.getElementById("item-name").value, type: document.getElementById("item-type").value, href: document.getElementById("item-href").value, monitorUrl: document.getElementById("item-monitor").value, description: document.getElementById("item-description").value, icon: document.getElementById("item-icon").value, statusStyle: document.getElementById("item-status").value };
+  if (previous?.containerName) item.containerName = previous.containerName;
   const integration = document.getElementById("item-integration").value;
   if (integration) {
     const defaults = INTEGRATION_DEFAULTS[integration];
@@ -679,7 +714,11 @@ function updateStats() {
   const online = [...state.health.values()].filter(item => item.state === "online").length;
   document.getElementById("online-count").textContent = state.health.size ? `${online}/${state.health.size}` : "—";
   if (!state.system) return;
-  document.getElementById("container-count").textContent = state.system.runningContainers ?? "—";
+  const containerCount = document.getElementById("container-count");
+  const containerLabel = document.getElementById("container-label");
+  containerCount.textContent = state.system.totalContainers == null ? "—" : `${state.system.runningContainers}/${state.system.totalContainers}`;
+  containerCount.title = state.system.dockerStatus === "ok" ? "Running / total Docker containers" : "Docker agent unavailable; check DOCKER_GID and agent logs";
+  containerLabel.textContent = state.system.dockerStatus === "ok" ? "Containers running" : "Docker agent offline";
   document.getElementById("memory-count").textContent = formatBytes(state.system.memoryUsed);
   document.getElementById("memory-total").textContent = `of ${formatBytes(state.system.memoryTotal)} memory`;
   document.getElementById("load-count").textContent = Number(state.system.load).toFixed(2);

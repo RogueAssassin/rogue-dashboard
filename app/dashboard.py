@@ -33,7 +33,7 @@ from importer import DEFAULT_DASHBOARD, import_homepage, suggested_widget
 from integrations import SUPPORTED_WIDGETS, collect_widget
 
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 PORT = int(os.environ.get("PORT", "8080"))
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8081"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -51,8 +51,19 @@ CONFIGURED_ALLOWED_HOSTS = {
 }
 ALLOWED_HOSTS = set(CONFIGURED_ALLOWED_HOSTS)
 ALLOWED_HOSTS.update({"localhost", "127.0.0.1", "::1", "dashboard", "rogue-dashboard"})
+ROGUEROUTE_PUBLIC_URL = os.environ.get("RGDASH_ROGUEROUTE_URL", "").strip()
+if urlparse(ROGUEROUTE_PUBLIC_URL).scheme not in ("http", "https"):
+    ROGUEROUTE_PUBLIC_URL = ""
 SESSION_COOKIE = "rogue_session"
 MAX_BODY = 2_000_000
+MAX_ARCHIVE_ENTRIES = 100
+MAX_ARCHIVE_UNCOMPRESSED = 5_000_000
+MAX_CUSTOM_ASSET = 10_000_000
+CUSTOM_ASSET_SUFFIXES = {".avif", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
+
+
+class SetupCompleted(Exception):
+    """Raised when another setup request has already created the administrator."""
 
 
 def utc_now() -> str:
@@ -90,7 +101,7 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", accent_secondary):
         accent_secondary = "#00e5ff"
     result: dict[str, Any] = {
-        "version": 3,
+        "version": 5,
         "meta": {
             "title": text(raw_meta.get("title"), 100, "My Docker Dashboard").strip() or "My Docker Dashboard",
             "subtitle": text(raw_meta.get("subtitle"), 180, "Your self-hosted command centre"),
@@ -145,6 +156,8 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
                 "type": raw_item.get("type") if raw_item.get("type") in ("service", "bookmark") else "service",
                 "statusStyle": raw_item.get("statusStyle") if raw_item.get("statusStyle") in ("dot", "badge", "none") else "dot",
             }
+            if isinstance(raw_item.get("containerName"), str):
+                item["containerName"] = text(raw_item["containerName"], 255)
             for key, limit in (("monitorUrl", 2000), ("description", 300), ("icon", 500)):
                 if isinstance(raw_item.get(key), str):
                     item[key] = text(raw_item[key], limit)
@@ -187,6 +200,36 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
                 if suggested:
                     item["widget"] = suggested
             if not (stored_version < 3 and re.sub(r"[^a-z0-9]+", "", item["name"].lower()) == "homepage"):
+                if stored_version < 5:
+                    identity = re.sub(r"[^a-z0-9]+", "", item["name"].lower())
+                    if identity in ("rogueroutegpx", "rogueroutegpxweb"):
+                        item.update(
+                            name="RogueRoute GPX",
+                            containerName="rogueroute-gpx-web",
+                            monitorUrl="http://rogueroute-gpx-web:9080/api/health",
+                            description="Route generator",
+                            icon="/icons/rogueroute-gpx.svg",
+                        )
+                        if ROGUEROUTE_PUBLIC_URL:
+                            item["href"] = ROGUEROUTE_PUBLIC_URL
+                    elif identity in ("roguerouteosrm", "rogueroutegpxosrm"):
+                        item.update(
+                            name="RogueRoute OSRM",
+                            containerName="rogueroute-gpx-osrm",
+                            href="",
+                            monitorUrl="http://rogueroute-gpx-osrm:5000/",
+                            description="Local route engine",
+                            icon="/icons/rogueroute-osrm.svg",
+                        )
+                    elif identity in ("rogueroutemanager", "rogueroutegpxmanager"):
+                        item.update(
+                            name="RogueRoute Manager",
+                            containerName="rogueroute-gpx-manager",
+                            href="",
+                            monitorUrl="http://rogueroute-gpx-manager:9090/health",
+                            description="Private region manager",
+                            icon="/icons/rogueroute-manager.svg",
+                        )
                 group["items"].append(item)
         result["groups"].append(group)
     result["groups"] = [group for group in result["groups"] if group["items"]]
@@ -228,7 +271,9 @@ class Database:
         token, token_hash, expires = make_session()
         with self.lock:
             try:
-                self.db.execute("BEGIN")
+                self.db.execute("BEGIN IMMEDIATE")
+                if self.db.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
+                    raise SetupCompleted("Setup has already been completed.")
                 cursor = self.db.execute(
                     "INSERT INTO users(username,password_hash,salt,created_at) VALUES(?,?,?,?)",
                     (username, password_hash.hex(), salt.hex(), utc_now()),
@@ -331,9 +376,17 @@ def docker_containers() -> list[dict[str, Any]]:
         raw = json.loads(response.read(5_000_000))
     finally:
         connection.close()
+    return normalise_containers(raw)
+
+
+def normalise_containers(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        raise RuntimeError("Docker Engine returned an invalid container list")
     containers: list[dict[str, Any]] = []
     exact_labels = {"com.docker.compose.project", "com.docker.compose.service"}
     for container in raw:
+        if not isinstance(container, dict):
+            continue
         labels = {
             key: value
             for key, value in (container.get("Labels") or {}).items()
@@ -350,10 +403,15 @@ def docker_containers() -> list[dict[str, Any]]:
                     {"privatePort": port.get("PrivatePort", 0), "publicPort": port.get("PublicPort"), "type": port.get("Type", "tcp")}
                     for port in container.get("Ports") or []
                 ],
+                "networks": sorted(
+                    str(name)
+                    for name in ((container.get("NetworkSettings") or {}).get("Networks") or {})
+                    if name
+                ),
                 "labels": labels,
             }
         )
-    return containers
+    return sorted(containers, key=lambda item: (item["state"] != "running", item["name"].lower()))
 
 
 def docker_action(container_id: str, action: str) -> None:
@@ -452,9 +510,14 @@ def system_stats() -> dict[str, Any]:
     except (OSError, ValueError):
         uptime = 0
     try:
-        container_count = sum(item.get("state") == "running" for item in containers_from_agent())
+        containers = containers_from_agent()
+        running_containers = sum(item.get("state") == "running" for item in containers)
+        total_containers = len(containers)
+        docker_status = "ok"
     except Exception:
-        container_count = None
+        running_containers = None
+        total_containers = None
+        docker_status = "unavailable"
     load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0
     return {
         "uptimeSeconds": round(uptime),
@@ -462,7 +525,9 @@ def system_stats() -> dict[str, Any]:
         "memoryTotal": memory_total,
         "load": load,
         "cpuCount": os.cpu_count() or 1,
-        "runningContainers": container_count,
+        "runningContainers": running_containers,
+        "totalContainers": total_containers,
+        "dockerStatus": docker_status,
     }
 
 
@@ -492,12 +557,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def end_headers(self) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("X-Permitted-Cross-Domain-Policies", "none")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'",
         )
+        if self.request_is_secure():
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         super().end_headers()
 
     def json_response(self, value: Any, status: int = 200, cookie: str | None = None) -> None:
@@ -579,6 +649,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "secure": self.request_is_secure(),
                         "trustedHeaders": TRUST_PROXY_HEADERS,
                     },
+                    "serviceUrls": {"rogueRoute": ROGUEROUTE_PUBLIC_URL},
                 }
             )
         elif path == "/api/dashboard":
@@ -687,6 +758,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except (ValueError, json.JSONDecodeError, zipfile.BadZipFile) as error:
             self.json_response({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+        except SetupCompleted as error:
+            self.json_response({"error": str(error)}, HTTPStatus.CONFLICT)
         except sqlite3.IntegrityError:
             self.json_response({"error": "That username is already in use."}, HTTPStatus.CONFLICT)
         except (HTTPError, URLError, RuntimeError, TimeoutError) as error:
@@ -759,6 +832,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
             return
         if not candidate.is_file():
+            if Path(relative).suffix:
+                self.json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+                return
             candidate = STATIC_DIR / "index.html"
         payload = candidate.read_bytes()
         self.send_response(HTTPStatus.OK)
@@ -775,6 +851,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         custom_root = CUSTOM_DIR.resolve()
         if (custom_root not in candidate.parents and candidate != custom_root) or not candidate.is_file():
             self.json_response({"error": "Custom asset not found"}, HTTPStatus.NOT_FOUND)
+            return
+        if candidate.suffix.lower() not in CUSTOM_ASSET_SUFFIXES:
+            self.json_response({"error": "Custom asset type is not supported"}, HTTPStatus.NOT_FOUND)
+            return
+        if candidate.stat().st_size > MAX_CUSTOM_ASSET:
+            self.json_response({"error": "Custom asset exceeds the 10 MB safety limit"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             return
         payload = candidate.read_bytes()
         self.send_response(HTTPStatus.OK)
@@ -814,12 +896,21 @@ def read_import_files(body: Any) -> dict[str, str]:
         if len(archive_bytes) > MAX_BODY:
             raise ValueError("The ZIP upload exceeds 2 MB")
         with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
-            for info in archive.infolist():
+            entries = archive.infolist()
+            if len(entries) > MAX_ARCHIVE_ENTRIES:
+                raise ValueError(f"The ZIP upload contains more than {MAX_ARCHIVE_ENTRIES} entries")
+            total_uncompressed = 0
+            for info in entries:
                 base = Path(info.filename).name.lower()
                 if base not in allowed or info.is_dir():
                     continue
+                if info.flag_bits & 0x1:
+                    raise ValueError("Encrypted ZIP files are not supported")
                 if info.file_size > 1_000_000:
                     raise ValueError(f"{base} exceeds the 1 MB safety limit")
+                total_uncompressed += info.file_size
+                if total_uncompressed > MAX_ARCHIVE_UNCOMPRESSED:
+                    raise ValueError("The ZIP upload expands beyond the 5 MB safety limit")
                 result[base] = archive.read(info).decode("utf-8")
     if not result:
         raise ValueError("No supported legacy dashboard YAML files were found")

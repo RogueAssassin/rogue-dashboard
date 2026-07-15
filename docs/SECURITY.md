@@ -16,8 +16,11 @@
 - User-provided icons and backgrounds are mounted read-only and served only from the dedicated `/custom/` path.
 - The Docker socket agent receives only its internal agent token, not media-service credentials.
 - Saved dashboard data is length-limited and validated.
+- Legacy ZIP imports cap compressed size, entry count, individual file size and total expansion size.
+- Custom files are limited to common image formats and a 10 MB maximum.
 - HTTP response security headers and a restrictive content policy are enabled.
-- Containers use read-only root filesystems, temporary scratch mounts and `no-new-privileges`.
+- Containers use read-only root filesystems, temporary scratch mounts, process limits and `no-new-privileges`.
+- Container logs rotate instead of growing without a bound.
 
 ## Important Docker warning
 

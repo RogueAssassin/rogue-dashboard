@@ -2,16 +2,20 @@ name: Publish container
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
 
 permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test-and-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -24,6 +28,16 @@ jobs:
       - name: Run application tests
         run: python -m unittest discover -s tests -v
 
+      - name: Validate release and Compose configuration
+        run: |
+          sh scripts/validate-release.sh
+          python -m compileall -q app
+          sh -n install.sh migrate-env.sh upgrade.sh scripts/validate-release.sh
+          cp .env.example .env
+          docker compose -f docker-compose.yaml config -q
+          docker compose -f docker-compose.yaml -f docker-compose.build.yaml config -q
+          RGDASH_EXTRA_NETWORK=application-network docker compose -f docker-compose.yaml -f docker-compose.extra-network.yaml config -q
+
       - name: Resolve release version
         id: version
         shell: bash
@@ -33,7 +47,7 @@ jobs:
             echo "app/dashboard.py does not contain a semantic VERSION" >&2
             exit 1
           fi
-          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
             echo "Tag $GITHUB_REF_NAME does not match application version $version" >&2
             exit 1
           fi
@@ -50,21 +64,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check whether the branch version is already published
-        id: publish
-        shell: bash
-        run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}:${{ steps.version.outputs.version }}"
-          if [[ "$GITHUB_REF_TYPE" == "branch" ]] && docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
-            echo "Version $image already exists; a branch push will not replace it."
-            echo "required=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "required=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Generate image metadata
         id: meta
-        if: steps.publish.outputs.required == 'true'
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
@@ -74,7 +75,6 @@ jobs:
             type=raw,value=latest
 
       - name: Build and publish
-        if: steps.publish.outputs.required == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .

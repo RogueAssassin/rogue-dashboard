@@ -9,7 +9,7 @@ Rogue Dashboard is a Docker-first, standard-library Python application with a br
 | `dashboard` | Host `${RGDASH_PORT:-7805}` → container `8080` | UI, authentication, imports, persistence, monitoring and integration clients |
 | `docker-agent` | Internal `8081` only | Allow-listed Docker metadata and container lifecycle operations |
 
-The browser talks only to `dashboard`. The dashboard calls the agent over the private Compose network with a generated bearer token. The agent is not attached to the shared application network and has no host port.
+The browser talks only to `dashboard`. The dashboard calls the agent over the private Compose network with a generated bearer token. The dashboard may join the primary shared network and one optional extra application network. The agent is attached to neither shared network and has no host port.
 
 ## Request and data flow
 
@@ -39,7 +39,7 @@ SQLite runs in write-ahead logging mode inside bind-mounted `data/`. Administrat
 
 Integration credentials are resolved from environment variables only when a collector runs. Widget responses may contain display metrics, state, timing and configured or missing variable names, but never the values. Results are cached briefly to avoid unnecessary service polling.
 
-The upgrade script creates a private timestamped backup before changing the running image and remembers the previous local image ID for automatic startup rollback.
+The upgrade script creates a private timestamped backup before changing the running image and remembers the previous local image ID for automatic startup rollback. Compose bounds Docker's JSON logs to three 10 MB files per service and applies process limits to reduce accidental resource exhaustion.
 
 ## Docker boundary
 
@@ -53,3 +53,4 @@ The agent implements only:
 
 There is no general Docker proxy, command execution route, image deletion route or arbitrary Engine API passthrough.
 
+Container discovery returns only an allow-listed metadata summary: ID prefix, name, image, state, published ports, attached network names and selected Compose/Rogue Dashboard labels. It does not expose container environment variables, mounts or secret values.

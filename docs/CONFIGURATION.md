@@ -17,6 +17,8 @@ docker compose up -d --force-recreate dashboard
 | `DOCKER_GID` | `999` | Group ID of `/var/run/docker.sock`; the installer detects it. |
 | `DOCKER_AGENT_TOKEN` | generated | Private dashboard-to-agent credential. Do not share it. |
 | `MEDIA_NETWORK` | `media-net` | External Docker network shared with apps and a proxy. |
+| `RGDASH_EXTRA_NETWORK` | empty | Optional second existing application network attached only to the dashboard. |
+| `RGDASH_ROGUEROUTE_URL` | empty | Optional public URL for a discovered RogueRoute GPX Web card. |
 | `SECURE_COOKIES` | `false` | Force Secure session cookies. Use `true` behind HTTPS when required. |
 | `RGDASH_TRUST_PROXY_HEADERS` | `true` | Honour forwarded protocol information from a trusted proxy path. |
 | `RGDASH_ALLOWED_HOSTS` | empty | Optional comma-separated host header allowlist. |
@@ -37,6 +39,18 @@ docker compose up -d --force-recreate dashboard
 
 Private URLs are examples, not enforced defaults. Use the actual container DNS name and internal WebUI port from your stack.
 
+## RogueRoute GPX cards
+
+When Docker discovery finds the standard RogueRoute container names, Rogue Dashboard applies these safe defaults:
+
+| Container | Card behaviour |
+| --- | --- |
+| `rogueroute-gpx-web` | Opens `RGDASH_ROGUEROUTE_URL` and checks `http://rogueroute-gpx-web:9080/api/health`. |
+| `rogueroute-gpx-osrm` | Status-only; checks `http://rogueroute-gpx-osrm:5000/`. |
+| `rogueroute-gpx-manager` | Status-only; checks `http://rogueroute-gpx-manager:9090/health`. |
+
+All three use bundled local icons. The dashboard must also join the RogueRoute network through `RGDASH_EXTRA_NETWORK`.
+
 ## qBittorrent authentication order
 
 For qBittorrent 5.2 or later, create an API key in the WebUI and set `RGDASH_QBITTORRENT_API_KEY`. Rogue Dashboard tries that bearer key first. If the key is absent or rejected and both fallback values are present, it performs a WebUI cookie login with the configured username and password.
@@ -52,4 +66,3 @@ Keeping all three values is valid and provides automatic fallback. **Customise â
 ```
 
 Review the file after migration, restart the dashboard and keep both environment files private.
-

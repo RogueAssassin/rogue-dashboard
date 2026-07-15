@@ -1,0 +1,14 @@
+# Optional overlay loaded automatically by install.sh and upgrade.sh when
+# RGDASH_EXTRA_NETWORK is set. Only the web dashboard joins this network;
+# the restricted Docker agent remains isolated.
+services:
+  dashboard:
+    networks:
+      extra-network:
+        aliases:
+          - rogue-dashboard
+
+networks:
+  extra-network:
+    external: true
+    name: ${RGDASH_EXTRA_NETWORK:?Set RGDASH_EXTRA_NETWORK in .env}

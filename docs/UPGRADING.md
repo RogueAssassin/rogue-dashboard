@@ -20,7 +20,7 @@ chmod +x upgrade.sh migrate-env.sh
 ./upgrade.sh
 ```
 
-The script validates Compose, pulls the requested image while the old dashboard remains online, checks the configured port, stops briefly for a consistent backup, migrates legacy environment names, starts the replacement and waits for health.
+The script verifies Docker, refreshes host-specific socket access, creates a missing private agent token, validates Compose, pulls the requested image while the old dashboard remains online, checks the configured port, stops briefly for a consistent backup, migrates legacy environment names, starts the replacement and waits for health.
 
 Backups are written to `backups/YYYYMMDD-HHMMSS/`. If the new container does not become healthy, the script restores `.env` and retags the previously running local image before restarting the stack.
 
@@ -29,7 +29,7 @@ Backups are written to `backups/YYYYMMDD-HHMMSS/`. If the new container does not
 Set a version in `.env`:
 
 ```dotenv
-RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.5.0
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:0.6.0
 ```
 
 Then run:
@@ -50,4 +50,3 @@ To roll back manually, choose the earlier semantic version tag and repeat those 
 5. Verify login, custom assets and service-network connectivity.
 
 Restrict copied files during transfer because `.env` contains API credentials and the SQLite database contains password and session hashes.
-

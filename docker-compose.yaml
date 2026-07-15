@@ -1,9 +1,18 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   dashboard:
     image: ${RGDASH_IMAGE:-ghcr.io/rogueassassin/rogue-dashboard:latest}
     pull_policy: missing
     container_name: rogue-dashboard
     restart: unless-stopped
+    stop_grace_period: 15s
+    pids_limit: 128
+    logging: *default-logging
     init: true
     env_file:
       - .env
@@ -45,6 +54,9 @@ services:
     pull_policy: missing
     container_name: rogue-dashboard-agent
     restart: unless-stopped
+    stop_grace_period: 15s
+    pids_limit: 64
+    logging: *default-logging
     init: true
     command: ["agent"]
     environment:
@@ -52,7 +64,9 @@ services:
       DOCKER_SOCKET: /var/run/docker.sock
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN}
       HEALTHCHECK_URL: http://127.0.0.1:8081/health
-    user: "${PUID:-1000}:${DOCKER_GID:-999}"
+    user: "${PUID:-1000}:${PGID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-999}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
