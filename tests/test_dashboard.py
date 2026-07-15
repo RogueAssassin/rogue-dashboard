@@ -275,7 +275,7 @@ class RogueDashboardTests(unittest.TestCase):
         widget["secretRefs"] = ["HOMEPAGE_VAR_QBITTORRENT_USERNAME", "HOMEPAGE_VAR_QBITTORRENT_PASSWORD"]
         widget["secretBindings"] = {"username": "HOMEPAGE_VAR_QBITTORRENT_USERNAME", "password": "HOMEPAGE_VAR_QBITTORRENT_PASSWORD"}
         migrated = dashboard_app.validate_dashboard(legacy)
-        self.assertEqual(migrated["version"], 5)
+        self.assertEqual(migrated["version"], 6)
         self.assertEqual(migrated["meta"]["theme"], "neon")
         self.assertEqual(migrated["meta"]["density"], "compact")
         migrated_widget = migrated["groups"][0]["items"][0]["widget"]
@@ -324,6 +324,24 @@ class RogueDashboardTests(unittest.TestCase):
             [item["containerName"] for item in (web, osrm, manager)],
             ["rogueroute-gpx-web", "rogueroute-gpx-osrm", "rogueroute-gpx-manager"],
         )
+
+    def test_v08_preserves_multiple_pages_and_migrates_legacy_groups_home(self):
+        multi_page = {
+            "version": 6,
+            "meta": {"title": "Pages"},
+            "pages": [{"id": "home", "name": "Home"}, {"id": "media", "name": "Media"}],
+            "groups": [
+                {"id": "home-group", "name": "Home", "kind": "services", "columns": 2, "pageId": "home", "items": [{"id": "one", "name": "One"}]},
+                {"id": "media-group", "name": "Media", "kind": "services", "columns": 3, "pageId": "media", "items": [{"id": "two", "name": "Two"}]},
+            ],
+        }
+        validated = dashboard_app.validate_dashboard(multi_page)
+        self.assertEqual([page["id"] for page in validated["pages"]], ["home", "media"])
+        self.assertEqual([group["pageId"] for group in validated["groups"]], ["home", "media"])
+
+        multi_page["version"] = 5
+        legacy = dashboard_app.validate_dashboard(multi_page)
+        self.assertEqual([group["pageId"] for group in legacy["groups"]], ["home", "home"])
 
     def test_docker_container_summary_includes_networks_and_stable_order(self):
         raw = [
@@ -466,6 +484,16 @@ class RogueDashboardTests(unittest.TestCase):
                 )
                 with urlopen(request) as response:
                     self.assertEqual(json.load(response)["dashboard"]["meta"]["title"], "Updated dashboard")
+                import_request = Request(
+                    f"{base}/api/import/dashboard",
+                    method="POST",
+                    data=json.dumps({"dashboard": imported}).encode(),
+                    headers={"Content-Type": "application/json", "Cookie": cookie},
+                )
+                with urlopen(import_request) as response:
+                    restored = json.load(response)
+                    self.assertEqual(restored["dashboard"]["pages"][0]["id"], "home")
+                    self.assertEqual(restored["summary"]["services"], 12)
                 dashboard_app.WIDGET_CACHE = (0, [])
                 with urlopen(f"{base}/api/widgets") as response:
                     widgets = json.load(response)

@@ -8,7 +8,7 @@ from homepage_yaml import loads
 
 
 DEFAULT_DASHBOARD = {
-    "version": 5,
+    "version": 6,
     "meta": {
         "title": "My Docker Dashboard",
         "subtitle": "Everything running at home, in one friendly place",
@@ -25,8 +25,9 @@ DEFAULT_DASHBOARD = {
         "equalHeights": True,
         "maxColumns": 4,
     },
+    "pages": [{"id": "home", "name": "Home"}],
     "groups": [
-        {"id": "favourites", "name": "Favourites", "kind": "services", "columns": 3, "collapsed": False, "items": []}
+        {"id": "favourites", "name": "Favourites", "kind": "services", "columns": 3, "collapsed": False, "pageId": "home", "items": []}
     ],
     "widgets": {"resources": True, "dateTime": True},
 }
@@ -182,6 +183,7 @@ def _groups(raw: Any, kind: str, layout: dict[str, Any], used: set[str], warning
                 "kind": kind,
                 "columns": max(1, min(6, columns)),
                 "collapsed": False,
+                "pageId": "home",
                 "items": items,
             })
     return result

@@ -2,6 +2,15 @@
 
 Rogue Dashboard follows semantic versioning for published container tags. Detailed upgrade notes live in `docs/`.
 
+## 0.8.0
+
+- Added up to 20 named dashboard pages with page-aware groups and Docker discovery.
+- Added page creation, renaming and guarded deletion to the live Customise panel.
+- Added validated JSON restore during first setup and from the Connection centre.
+- Migrated every existing single-page layout to a compatible Home page automatically.
+
+See [the 0.8.0 release notes](docs/RELEASE_0.8.0.md).
+
 ## 0.7.0
 
 - Added opt-in live CPU, memory and network counters to authenticated Docker discovery.

@@ -60,6 +60,11 @@ a { color: inherit; }
 .search-box input { width: 100%; border: 0; outline: 0; color: var(--text); background: transparent; font-size: .9rem; }
 .search-box input::placeholder { color: var(--muted); }
 .search-box button { display: grid; border: 0; padding: 2px; background: transparent; cursor: pointer; color: var(--muted); }
+.page-tabs { display: flex; gap: 7px; margin: -14px 0 22px; overflow-x: auto; padding: 2px 1px 6px; }
+.page-tabs button { min-height: 32px; flex: 0 0 auto; padding: 0 13px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-soft); color: var(--muted); cursor: pointer; font-size: .73rem; font-weight: 800; }
+.page-tabs button.active { border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--text); }
+.page-editor-list { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+.page-editor-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; align-items: center; }
 
 .button { min-height: 40px; border: 1px solid var(--border-bright); border-radius: 12px; padding: 0 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--surface-soft); color: var(--text); font-weight: 700; font-size: .84rem; cursor: pointer; transition: transform .16s ease, border-color .16s ease, background .16s ease, opacity .16s ease; }
 .button:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 42%, var(--border-bright)); }

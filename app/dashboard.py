@@ -33,7 +33,7 @@ from importer import DEFAULT_DASHBOARD, import_homepage, suggested_widget
 from integrations import SUPPORTED_WIDGETS, collect_widget
 
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 PORT = int(os.environ.get("PORT", "8080"))
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8081"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -101,7 +101,7 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", accent_secondary):
         accent_secondary = "#00e5ff"
     result: dict[str, Any] = {
-        "version": 5,
+        "version": 6,
         "meta": {
             "title": text(raw_meta.get("title"), 100, "My Docker Dashboard").strip() or "My Docker Dashboard",
             "subtitle": text(raw_meta.get("subtitle"), 180, "Your self-hosted command centre"),
@@ -124,6 +124,22 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
             "dateTime": raw.get("widgets", {}).get("dateTime", True) is True if isinstance(raw.get("widgets"), dict) else True,
         },
     }
+    pages: list[dict[str, str]] = []
+    page_ids: set[str] = set()
+    raw_pages = raw.get("pages") if isinstance(raw.get("pages"), list) else []
+    for page_index, raw_page in enumerate(raw_pages[:20]):
+        if not isinstance(raw_page, dict):
+            continue
+        page_id = text(raw_page.get("id"), 100, f"page-{page_index + 1}").strip() or f"page-{page_index + 1}"
+        if page_id in page_ids:
+            page_id = f"{page_id}-{page_index + 1}"
+        page_ids.add(page_id)
+        pages.append({"id": page_id, "name": text(raw_page.get("name"), 100, "Page").strip() or "Page"})
+    if not pages:
+        pages = [{"id": "home", "name": "Home"}]
+        page_ids = {"home"}
+    result["pages"] = pages
+    default_page_id = pages[0]["id"]
     seen: set[str] = set()
     raw_groups = raw.get("groups") if isinstance(raw.get("groups"), list) else []
     for group_index, raw_group in enumerate(raw_groups[:100]):
@@ -139,6 +155,7 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
             "kind": raw_group.get("kind") if raw_group.get("kind") in ("services", "bookmarks") else "services",
             "columns": clamp(raw_group.get("columns"), 1, 6, 3),
             "collapsed": raw_group.get("collapsed", False) is True,
+            "pageId": raw_group.get("pageId") if stored_version >= 6 and raw_group.get("pageId") in page_ids else default_page_id,
             "items": [],
         }
         raw_items = raw_group.get("items") if isinstance(raw_group.get("items"), list) else []
@@ -235,6 +252,8 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
     result["groups"] = [group for group in result["groups"] if group["items"]]
     if not result["groups"]:
         result["groups"] = deepcopy(DEFAULT_DASHBOARD["groups"])
+        for group in result["groups"]:
+            group["pageId"] = default_page_id
     return result
 
 
@@ -786,6 +805,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if not DB.setup_required() and not self.require_admin():
                     return
                 self.json_response(import_homepage(read_import_files(body)))
+            elif path == "/api/import/dashboard":
+                if not DB.setup_required() and not self.require_admin():
+                    return
+                if not isinstance(body, dict) or "dashboard" not in body:
+                    raise ValueError("A Rogue Dashboard JSON object is required")
+                imported_dashboard = validate_dashboard(body["dashboard"])
+                imported_items = [item for group in imported_dashboard["groups"] for item in group["items"]]
+                self.json_response({
+                    "dashboard": imported_dashboard,
+                    "warnings": [],
+                    "summary": {
+                        "groups": len(imported_dashboard["groups"]),
+                        "services": sum(item["type"] == "service" for item in imported_items),
+                        "bookmarks": sum(item["type"] == "bookmark" for item in imported_items),
+                        "widgets": sum(isinstance(item.get("widget"), dict) for item in imported_items),
+                        "secretReferences": sorted({ref for item in imported_items for ref in item.get("widget", {}).get("secretRefs", [])}),
+                    },
+                })
             elif path == "/api/monitor/refresh":
                 if not self.require_admin():
                     return

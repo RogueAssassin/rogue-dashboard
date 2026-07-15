@@ -16,6 +16,7 @@ const state = {
   collapsed: new Set(),
   editingItem: null,
   editorTab: "appearance",
+  activePage: "home",
 };
 
 const app = document.getElementById("app");
@@ -108,6 +109,7 @@ async function load() {
     state.username = bootstrap.username || "";
     state.dashboard = bootstrap.dashboard;
     state.draft = structuredClone(bootstrap.dashboard);
+    if (!state.draft.pages?.some(page => page.id === state.activePage)) state.activePage = state.draft.pages?.[0]?.id || "home";
     if (bootstrap.setupRequired) renderSetup();
     else renderDashboard();
   } catch (error) {
@@ -129,8 +131,8 @@ function renderSetup() {
           <p class="lead">Name the dashboard, optionally import your previous configuration, then create the local administrator who can change it.</p>
           <label class="field"><span>Dashboard name</span><input id="setup-title" maxlength="100" value="${escapeHtml(state.draft.meta.title)}" required></label>
           <label class="upload-zone" id="setup-upload">
-            <input id="setup-files" type="file" accept=".zip,.yaml,.yml" multiple>
-            <strong>Choose your legacy dashboard ZIP or YAML files</strong><span>Credentials remain environment references</span>
+            <input id="setup-files" type="file" accept=".json,.zip,.yaml,.yml" multiple>
+            <strong>Restore Rogue Dashboard JSON or choose legacy ZIP/YAML</strong><span>Credentials remain environment references</span>
           </label>
           <div id="setup-import-result"></div>
           <div class="form-grid">
@@ -168,6 +170,15 @@ async function importPayload(files) {
 }
 
 async function previewImport(files) {
+  const selected = [...files];
+  const jsonFile = selected.find(file => file.name.toLowerCase().endsWith(".json"));
+  if (jsonFile) {
+    if (jsonFile.size > 2_000_000) throw new Error("The dashboard backup must be smaller than 2 MB.");
+    let dashboard;
+    try { dashboard = JSON.parse(await jsonFile.text()); }
+    catch { throw new Error("The selected JSON backup could not be parsed."); }
+    return request("/api/import/dashboard", { method: "POST", body: JSON.stringify({ dashboard }) });
+  }
   return request("/api/import/homepage", { method: "POST", body: JSON.stringify(await importPayload(files)) });
 }
 
@@ -243,6 +254,7 @@ function renderDashboard() {
           <div class="brand-block"><div class="brand-mark small">R</div><div><h1>${escapeHtml(dashboard.meta.title)}</h1><p>${escapeHtml(dashboard.meta.subtitle)}</p></div></div>
           <div class="topbar-actions"><div class="search-box"><span>⌕</span><input id="search" placeholder="Search apps and bookmarks…" value="${escapeHtml(state.search)}"><button id="clear-search" aria-label="Clear search">×</button></div><button class="button glass" id="customise">${state.authenticated ? "⚙ Customise" : "↪ Admin"}</button></div>
         </header>
+        <nav class="page-tabs" aria-label="Dashboard pages">${(dashboard.pages || [{ id: "home", name: "Home" }]).map(page => `<button class="${page.id === state.activePage ? "active" : ""}" data-page="${escapeHtml(page.id)}">${escapeHtml(page.name)}</button>`).join("")}</nav>
         <section class="stat-strip" id="stats">
           <div class="hero-time"><span>◷</span><div><strong id="clock">--:--</strong><span id="date">Loading…</span></div></div>
           <div class="mini-stat"><span>▣</span><div><strong id="container-count">—</strong><span id="container-label">Containers running</span></div></div>
@@ -251,7 +263,7 @@ function renderDashboard() {
           <div class="mini-stat"><span>⌁</span><div><strong id="load-count">—</strong><span id="uptime-count">System load</span></div></div>
         </section>
         <div class="result-count" id="result-count"></div><div class="groups" id="groups"></div>
-        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.7.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
+        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "0.8.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
       </main>
       ${state.editor ? editorMarkup() : ""}
     </div>`;
@@ -267,6 +279,10 @@ function renderDashboard() {
   document.getElementById("search").oninput = event => { state.search = event.target.value; renderGroups(); };
   document.getElementById("clear-search").onclick = () => { state.search = ""; document.getElementById("search").value = ""; renderGroups(); };
   document.getElementById("customise").onclick = () => state.authenticated ? openEditor() : openLogin();
+  document.querySelectorAll("[data-page]").forEach(button => button.onclick = () => {
+    state.activePage = button.dataset.page;
+    renderDashboard();
+  });
   if (state.editor) bindEditor();
   renderGroups();
   updateClock();
@@ -280,6 +296,7 @@ function renderGroups() {
   const query = state.search.trim().toLowerCase();
   let visibleCount = 0;
   const html = state.draft.groups.map((group, groupIndex) => {
+    if ((group.pageId || state.draft.pages?.[0]?.id || "home") !== state.activePage) return "";
     const items = group.items.map((item, itemIndex) => ({ item, itemIndex })).filter(({ item }) => !query || `${item.name} ${item.description || ""} ${group.name}`.toLowerCase().includes(query));
     if (!items.length && (query || !state.editor)) return "";
     visibleCount += items.length;
@@ -400,6 +417,8 @@ function editorMarkup() {
         <button class="button secondary full-button" id="reset-appearance">Restore Electric Neon defaults</button>
       </section>
       <section class="editor-section editor-tab-panel ${state.editorTab === "layout" ? "active" : ""}" data-editor-panel="layout">
+        <div class="section-heading"><div><h3>Pages</h3><p>Separate services into focused dashboard views.</p></div><button class="button small" id="add-page">+ Page</button></div>
+        <div class="page-editor-list" id="page-editor-list"></div>
         <label class="field"><span>Maximum dashboard columns</span><select id="edit-max-columns">${[1,2,3,4,5,6].map(value => `<option value="${value}" ${state.draft.meta.maxColumns === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
         <label class="toggle-row"><input id="edit-full" type="checkbox" ${state.draft.meta.fullWidth ? "checked" : ""}><span><strong>Full-width layout</strong><small>Use the available browser width.</small></span></label>
         <label class="toggle-row"><input id="edit-equal" type="checkbox" ${state.draft.meta.equalHeights ? "checked" : ""}><span><strong>Equal-height cards</strong><small>Keep groups visually tidy.</small></span></label>
@@ -411,7 +430,7 @@ function editorMarkup() {
         <div class="section-heading"><div><h3>Connection centre</h3><p>Private network, .env loading and API authentication.</p></div><button class="button tiny" id="refresh-monitor">↻ Test now</button></div>
         ${proxyDiagnosticsMarkup()}
         <div id="widget-diagnostics">${connectionDiagnosticsMarkup()}</div>
-        <label class="compact-upload"><input id="editor-import" type="file" accept=".zip,.yaml,.yml" multiple><span>⇧ Import legacy dashboard ZIP or YAML</span></label>
+        <label class="compact-upload"><input id="editor-import" type="file" accept=".json,.zip,.yaml,.yml" multiple><span>⇧ Restore Rogue Dashboard JSON or import legacy ZIP/YAML</span></label>
         <button class="button secondary full-button" id="export-json">⇩ Export JSON backup</button>
       </section>
       <section class="editor-section editor-tab-panel ${state.editorTab === "docker" ? "active" : ""}" data-editor-panel="docker">
@@ -498,6 +517,7 @@ function bindEditor() {
   document.getElementById("edit-equal").onchange = event => { state.draft.meta.equalHeights = event.target.checked; renderGroups(); };
   document.getElementById("edit-latency").onchange = event => { state.draft.meta.showLatency = event.target.checked; renderGroups(); };
   document.getElementById("add-group").onclick = addGroup;
+  document.getElementById("add-page").onclick = addPage;
   document.getElementById("save-dashboard").onclick = saveDashboard;
   document.getElementById("logout").onclick = logout;
   document.getElementById("discover-docker").onclick = discoverDocker;
@@ -505,12 +525,49 @@ function bindEditor() {
   document.getElementById("export-json").onclick = exportJson;
   document.getElementById("refresh-monitor").onclick = () => refreshRuntime(true);
   renderGroupEditor();
+  renderPageEditor();
+}
+
+function renderPageEditor() {
+  const list = document.getElementById("page-editor-list");
+  if (!list) return;
+  list.innerHTML = state.draft.pages.map((page, index) => `<div class="page-editor-row"><input data-page-name="${index}" value="${escapeHtml(page.name)}" aria-label="Page name"><button class="icon-button danger" data-page-delete="${index}" title="Delete page" ${state.draft.pages.length === 1 ? "disabled" : ""}>×</button></div>`).join("");
+  list.querySelectorAll("[data-page-name]").forEach(input => input.oninput = () => {
+    state.draft.pages[Number(input.dataset.pageName)].name = input.value || "Page";
+    const tab = [...document.querySelectorAll("[data-page]")][Number(input.dataset.pageName)];
+    if (tab) tab.textContent = input.value || "Page";
+  });
+  list.querySelectorAll("[data-page-delete]").forEach(button => button.onclick = () => deletePage(Number(button.dataset.pageDelete)));
+}
+
+function addPage() {
+  if (state.draft.pages.length >= 20) return toast("A dashboard can contain up to 20 pages");
+  const name = `Page ${state.draft.pages.length + 1}`;
+  const page = { id: uniqueId(name), name };
+  state.draft.pages.push(page);
+  state.activePage = page.id;
+  state.editorTab = "layout";
+  renderDashboard();
+}
+
+function deletePage(index) {
+  const page = state.draft.pages[index];
+  if (!page || state.draft.pages.length === 1) return;
+  const groups = state.draft.groups.filter(group => group.pageId === page.id);
+  const cards = groups.reduce((total, group) => total + group.items.length, 0);
+  if (cards && !confirm(`Delete ${page.name} and its ${cards} cards?`)) return;
+  state.draft.groups = state.draft.groups.filter(group => group.pageId !== page.id);
+  state.draft.pages.splice(index, 1);
+  state.activePage = state.draft.pages[Math.max(0, index - 1)].id;
+  state.editorTab = "layout";
+  renderDashboard();
 }
 
 function renderGroupEditor() {
   const list = document.getElementById("group-editor-list");
   if (!list) return;
-  list.innerHTML = state.draft.groups.map((group, index) => `<div class="group-editor-row"><span>▦</span><div><input data-name="${index}" value="${escapeHtml(group.name)}"><span>${group.items.length} cards</span></div><select data-columns="${index}">${[1,2,3,4,5,6].map(value => `<option value="${value}" ${group.columns === value ? "selected" : ""}>${value} cols</option>`).join("")}</select><div class="group-order"><button class="icon-button" data-move-up="${index}" title="Move up" ${index === 0 ? "disabled" : ""}>↑</button><button class="icon-button" data-move-down="${index}" title="Move down" ${index === state.draft.groups.length - 1 ? "disabled" : ""}>↓</button></div><button class="icon-button danger" data-delete="${index}">×</button></div>`).join("");
+  const visible = state.draft.groups.map((group, index) => ({ group, index })).filter(({ group }) => (group.pageId || state.draft.pages[0].id) === state.activePage);
+  list.innerHTML = visible.map(({ group, index }, position) => `<div class="group-editor-row"><span>▦</span><div><input data-name="${index}" value="${escapeHtml(group.name)}"><span>${group.items.length} cards</span></div><select data-columns="${index}">${[1,2,3,4,5,6].map(value => `<option value="${value}" ${group.columns === value ? "selected" : ""}>${value} cols</option>`).join("")}</select><div class="group-order"><button class="icon-button" data-move-up="${index}" title="Move up" ${position === 0 ? "disabled" : ""}>↑</button><button class="icon-button" data-move-down="${index}" title="Move down" ${position === visible.length - 1 ? "disabled" : ""}>↓</button></div><button class="icon-button danger" data-delete="${index}">×</button></div>`).join("");
   list.querySelectorAll("[data-name]").forEach(input => input.oninput = () => { state.draft.groups[Number(input.dataset.name)].name = input.value; renderGroups(); });
   list.querySelectorAll("[data-columns]").forEach(select => select.onchange = () => { state.draft.groups[Number(select.dataset.columns)].columns = Number(select.value); renderGroups(); });
   list.querySelectorAll("[data-move-up]").forEach(button => button.onclick = () => moveGroup(Number(button.dataset.moveUp), -1));
@@ -523,14 +580,16 @@ function renderGroupEditor() {
 }
 
 function moveGroup(index, direction) {
-  const target = index + direction;
-  if (target < 0 || target >= state.draft.groups.length) return;
+  const visible = state.draft.groups.map((group, groupIndex) => ({ group, groupIndex })).filter(({ group }) => (group.pageId || state.draft.pages[0].id) === state.activePage);
+  const position = visible.findIndex(entry => entry.groupIndex === index);
+  const target = visible[position + direction]?.groupIndex;
+  if (position < 0 || target === undefined) return;
   [state.draft.groups[index], state.draft.groups[target]] = [state.draft.groups[target], state.draft.groups[index]];
   renderGroupEditor(); renderGroups();
 }
 
 function uniqueId(name) {
-  const used = new Set(state.draft.groups.flatMap(group => [group.id, ...group.items.map(item => item.id)]));
+  const used = new Set([...(state.draft.pages || []).map(page => page.id), ...state.draft.groups.flatMap(group => [group.id, ...group.items.map(item => item.id)])]);
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
   let id = base, suffix = 2;
   while (used.has(id)) id = `${base}-${suffix++}`;
@@ -539,7 +598,7 @@ function uniqueId(name) {
 
 function addGroup() {
   const name = `New group ${state.draft.groups.length + 1}`;
-  state.draft.groups.push({ id: uniqueId(name), name, kind: "services", columns: 3, collapsed: false, items: [] });
+  state.draft.groups.push({ id: uniqueId(name), name, kind: "services", columns: 3, collapsed: false, pageId: state.activePage, items: [] });
   renderGroupEditor(); renderGroups();
 }
 
@@ -613,9 +672,9 @@ function addContainer(container) {
     rogueroutegpxmanager: { name: "RogueRoute Manager", href: "", monitorUrl: "http://rogueroute-gpx-manager:9090/health", description: "Private region manager", icon: "/icons/rogueroute-manager.svg" },
   };
   const preset = presets[identity];
-  let group = preset ? state.draft.groups.find(entry => entry.kind === "services" && /gpx|rogueroute/i.test(entry.name)) : state.draft.groups.find(entry => entry.kind === "services");
+  let group = preset ? state.draft.groups.find(entry => entry.pageId === state.activePage && entry.kind === "services" && /gpx|rogueroute/i.test(entry.name)) : state.draft.groups.find(entry => entry.pageId === state.activePage && entry.kind === "services");
   if (!group) {
-    group = { id: uniqueId(preset ? "rogueroute-gpx" : "services"), name: preset ? "RogueRoute GPX" : "Services", kind: "services", columns: 3, collapsed: false, items: [] };
+    group = { id: uniqueId(preset ? "rogueroute-gpx" : "services"), name: preset ? "RogueRoute GPX" : "Services", kind: "services", columns: 3, collapsed: false, pageId: state.activePage, items: [] };
     state.draft.groups.push(group);
   }
   const defaults = preset || { name: container.name, href: port?.publicPort ? `${location.protocol}//${location.hostname}:${port.publicPort}` : "", monitorUrl: port?.privatePort ? `http://${container.name}:${port.privatePort}` : "", description: container.image, icon: "" };

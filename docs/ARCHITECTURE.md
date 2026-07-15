@@ -41,6 +41,8 @@ Integration credentials are resolved from environment variables only when a coll
 
 The upgrade script creates a private timestamped backup before changing the running image and remembers the previous local image ID for automatic startup rollback. Compose bounds Docker's JSON logs to three 10 MB files per service and applies process limits to reduce accidental resource exhaustion.
 
+Dashboard schema 6 stores named pages separately from groups. Each group carries a `pageId`; older layouts receive a generated Home page during validation. JSON restores pass through the same server-side length and schema validation as normal dashboard saves.
+
 ## Docker boundary
 
 The agent implements only:
