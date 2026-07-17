@@ -2,6 +2,17 @@
 
 Rogue Dashboard follows semantic versioning for published container tags. Detailed upgrade notes live in `docs/`.
 
+## 1.0.1
+
+- Made native Docker health authoritative for container-backed cards while retaining private endpoint diagnostics.
+- Migrated RogueRoute OSRM cards from the generic OSRM root path to `/api/health/osrm` on the RogueRoute Web container.
+- Automatically attaches the dashboard to an existing `rogueroute-gpx` network when no other extra network is configured.
+- Added health source, container state and probe detail to the health API and UI tooltips.
+- Updated Docker discovery so healthy, starting and unhealthy containers are displayed accurately.
+- Updated the GitHub Actions checkout major and expanded regression coverage for health-state handling.
+
+See [the 1.0.1 release notes](docs/RELEASE_1.0.1.md).
+
 ## 1.0.0
 
 - Added active administrator-session review and protected revocation.

@@ -6,12 +6,12 @@
 
 **A colourful, local-first command centre for the containers you run.**
 
-[![Release](https://img.shields.io/badge/release-1.0.0-9b5cff?style=for-the-badge)](https://github.com/RogueAssassin/rogue-dashboard)
+[![Release](https://img.shields.io/badge/release-1.0.1-9b5cff?style=for-the-badge)](https://github.com/RogueAssassin/rogue-dashboard)
 [![Container](https://img.shields.io/badge/GHCR-ready-00d9ff?style=for-the-badge&logo=docker&logoColor=white)](https://github.com/RogueAssassin/rogue-dashboard/pkgs/container/rogue-dashboard)
 [![No Node](https://img.shields.io/badge/frontend-no_build_step-ff2bd6?style=for-the-badge)](#why-rogue-dashboard)
 [![Platforms](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-41d99b?style=for-the-badge)](#install-from-scratch)
 
-Version **1.0.0** · Docker Compose deployment · Browser-based setup
+Version **1.0.1** · Docker Compose deployment · Browser-based setup
 
 </div>
 
@@ -98,7 +98,7 @@ docker compose down
 Normal installations pull `ghcr.io/rogueassassin/rogue-dashboard:latest`; they do not build application code. To pin this release, add this to `.env`:
 
 ```dotenv
-RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:1.0.0
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:1.0.1
 ```
 
 ## Connect live service widgets
@@ -134,7 +134,7 @@ RGDASH_EXTRA_NETWORK=application-network
 
 Then run `./upgrade.sh` or `./install.sh`. The scripts automatically load `docker-compose.extra-network.yaml` and attach only the web dashboard to that network. The restricted Docker agent remains isolated. See [Multiple Docker networks](docs/INSTALLATION.md#multiple-docker-networks) for discovery and verification commands.
 
-RogueRoute GPX containers receive dedicated local icons and private health endpoints when added through **Customise → Docker**. Set `RGDASH_ROGUEROUTE_URL` to provide the public link for the Web card; OSRM and Manager remain status-only. Docker discovery displays each container's attached networks and marks containers that already have a card.
+RogueRoute GPX containers receive dedicated local icons and native Docker health awareness when added through **Customise → Docker**. Set `RGDASH_ROGUEROUTE_URL` to provide the public link for the Web card; OSRM and Manager remain status-only. When the `rogueroute-gpx` network already exists, the installer and upgrader automatically select it as `RGDASH_EXTRA_NETWORK`. Existing RogueRoute cards are migrated to the stable Web and OSRM health endpoints.
 
 ## Themes, icons and backgrounds
 
@@ -186,6 +186,7 @@ Do not run `docker compose down -v` as part of an upgrade. Read [Upgrading and r
 - [Migration policy](docs/MIGRATIONS.md)
 - [Support matrix](docs/SUPPORT.md)
 - [Changelog](CHANGELOG.md)
+- [1.0.1 release notes](docs/RELEASE_1.0.1.md)
 - [1.0.0 release notes](docs/RELEASE_1.0.0.md)
 - [0.8.0 release notes](docs/RELEASE_0.8.0.md)
 - [0.7.0 release notes](docs/RELEASE_0.7.0.md)

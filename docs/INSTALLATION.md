@@ -85,6 +85,12 @@ The network must use the same name in each Compose project. A service cannot be 
 
 Some applications use an isolated network that should not be replaced by `media-net`. Rogue Dashboard can join one additional existing network while its Docker agent stays private.
 
+RogueRoute GPX creates the network `rogueroute-gpx`. When that network exists and `RGDASH_EXTRA_NETWORK` is empty, `install.sh` and `upgrade.sh` detect and configure it automatically. To set it yourself, use:
+
+```dotenv
+RGDASH_EXTRA_NETWORK=rogueroute-gpx
+```
+
 First, find the exact network attached to the target container:
 
 ```bash
@@ -136,3 +142,14 @@ curl --fail http://localhost:7805/api/ping
 ```
 
 The dashboard and agent should both be healthy. The agent intentionally has no host port.
+
+For RogueRoute, also verify its Web and OSRM containers and the shared network:
+
+```bash
+docker inspect rogueroute-gpx-web rogueroute-gpx-osrm \
+  --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}'
+docker network inspect rogueroute-gpx \
+  --format '{{range $id, $container := .Containers}}{{println $container.Name}}{{end}}'
+```
+
+`rogue-dashboard`, `rogueroute-gpx-web` and `rogueroute-gpx-osrm` should appear on the network. RogueRoute Manager may also appear because it belongs to that private application stack.

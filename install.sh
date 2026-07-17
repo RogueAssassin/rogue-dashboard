@@ -54,6 +54,11 @@ media_network=${media_network:-media-net}
 docker network inspect "$media_network" >/dev/null 2>&1 || docker network create "$media_network" >/dev/null
 
 extra_network=$(sed -n 's/^RGDASH_EXTRA_NETWORK=//p' .env | tail -n 1)
+if [ -z "$extra_network" ] && docker network inspect rogueroute-gpx >/dev/null 2>&1; then
+  extra_network=rogueroute-gpx
+  set_value RGDASH_EXTRA_NETWORK "$extra_network"
+  echo "Detected RogueRoute GPX and enabled its private Docker network."
+fi
 if [ -n "$extra_network" ]; then
   if ! docker network inspect "$extra_network" >/dev/null 2>&1; then
     echo "The extra Docker network '$extra_network' does not exist."

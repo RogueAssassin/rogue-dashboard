@@ -18,7 +18,7 @@ docker compose up -d --force-recreate dashboard
 | `DOCKER_GID` | `999` | Group ID of `/var/run/docker.sock`; the installer detects it. |
 | `DOCKER_AGENT_TOKEN` | generated | Private dashboard-to-agent credential. Do not share it. |
 | `MEDIA_NETWORK` | `media-net` | External Docker network shared with apps and a proxy. |
-| `RGDASH_EXTRA_NETWORK` | empty | Optional second existing application network attached only to the dashboard. |
+| `RGDASH_EXTRA_NETWORK` | empty | Optional second existing application network attached only to the dashboard. Install and upgrade auto-select `rogueroute-gpx` when it already exists and this value is empty. |
 | `RGDASH_ROGUEROUTE_URL` | empty | Optional public URL for a discovered RogueRoute GPX Web card. |
 | `SECURE_COOKIES` | `false` | Force Secure session cookies. Use `true` behind HTTPS when required. |
 | `RGDASH_TRUST_PROXY_HEADERS` | `true` | Honour forwarded protocol information from a trusted proxy path. |
@@ -47,10 +47,17 @@ When Docker discovery finds the standard RogueRoute container names, Rogue Dashb
 | Container | Card behaviour |
 | --- | --- |
 | `rogueroute-gpx-web` | Opens `RGDASH_ROGUEROUTE_URL` and checks `http://rogueroute-gpx-web:9080/api/health`. |
-| `rogueroute-gpx-osrm` | Status-only; checks `http://rogueroute-gpx-osrm:5000/`. |
+| `rogueroute-gpx-osrm` | Status-only; checks `http://rogueroute-gpx-web:9080/api/health/osrm`. |
 | `rogueroute-gpx-manager` | Status-only; checks `http://rogueroute-gpx-manager:9090/health`. |
 
-All three use bundled local icons. The dashboard must also join the RogueRoute network through `RGDASH_EXTRA_NETWORK`.
+All three use bundled local icons. Container-backed cards use Docker's native health state as the authoritative status and retain the private endpoint probe as a connection diagnostic. The dashboard installer and upgrader automatically join an existing `rogueroute-gpx` network when `RGDASH_EXTRA_NETWORK` is empty. Set it explicitly if automatic detection is not possible:
+
+```dotenv
+RGDASH_EXTRA_NETWORK=rogueroute-gpx
+RGDASH_ROGUEROUTE_URL=https://gpx.example.com
+```
+
+Run `./upgrade.sh` after changing the value. Existing schema 6 cards are migrated to the current endpoints when the dashboard loads them.
 
 ## qBittorrent authentication order
 
