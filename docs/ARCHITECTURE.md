@@ -41,7 +41,7 @@ Integration credentials are resolved from environment variables only when a coll
 
 The upgrade script creates a private timestamped backup before changing the running image and remembers the previous local image ID for automatic startup rollback. Compose bounds Docker's JSON logs to three 10 MB files per service and applies process limits to reduce accidental resource exhaustion.
 
-Dashboard schema 6 stores named pages separately from groups. Each group carries a `pageId`; older layouts receive a generated Home page during validation. JSON restores pass through the same server-side length and schema validation as normal dashboard saves.
+Dashboard schema 7 stores named pages separately from groups and migrates known RogueRoute cards to the stable health contract. Each group carries a `pageId`; older layouts receive a generated Home page during validation. JSON restores pass through the same server-side length and schema validation as normal dashboard saves.
 
 The action-audit table retains at most 1,000 rows. It stores time, local username, action name, target identifier, outcome and a sanitised detail label; it does not store request bodies, cookies, environment values or service credentials.
 
@@ -57,4 +57,6 @@ The agent implements only:
 
 There is no general Docker proxy, command execution route, image deletion route or arbitrary Engine API passthrough.
 
-Container discovery returns only an allow-listed metadata summary: ID prefix, name, image, state, published ports, attached network names and selected Compose/Rogue Dashboard labels. It does not expose container environment variables, mounts or secret values.
+Container discovery returns only an allow-listed metadata summary: ID prefix, name, image, runtime health, published ports, attached network names and selected Compose/Rogue Dashboard labels. It does not expose container environment variables, mounts or secret values.
+
+For cards linked to a container, Docker's native health is authoritative. HTTP probes still run so the Connection centre can distinguish an unhealthy application response from a healthy container whose private network is not shared with the dashboard.

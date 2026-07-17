@@ -31,7 +31,7 @@ Backups are retained indefinitely by default. To keep only the newest ten succes
 Set a version in `.env`:
 
 ```dotenv
-RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:1.0.0
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:1.0.1
 ```
 
 Then run:

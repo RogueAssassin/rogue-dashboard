@@ -276,7 +276,7 @@ class RogueDashboardTests(unittest.TestCase):
         widget["secretRefs"] = ["HOMEPAGE_VAR_QBITTORRENT_USERNAME", "HOMEPAGE_VAR_QBITTORRENT_PASSWORD"]
         widget["secretBindings"] = {"username": "HOMEPAGE_VAR_QBITTORRENT_USERNAME", "password": "HOMEPAGE_VAR_QBITTORRENT_PASSWORD"}
         migrated = dashboard_app.validate_dashboard(legacy)
-        self.assertEqual(migrated["version"], 6)
+        self.assertEqual(migrated["version"], 7)
         self.assertEqual(migrated["meta"]["theme"], "neon")
         self.assertEqual(migrated["meta"]["density"], "compact")
         migrated_widget = migrated["groups"][0]["items"][0]["widget"]
@@ -299,7 +299,7 @@ class RogueDashboardTests(unittest.TestCase):
         bookmark_groups = [group["name"] for group in migrated["groups"] if group["kind"] == "bookmarks"]
         self.assertEqual(bookmark_groups, ["Developer resources", "Documentation", "Project"])
 
-    def test_v05_migrates_rogueroute_cards_to_private_health_endpoints(self):
+    def test_v07_migrates_rogueroute_cards_to_private_health_endpoints(self):
         current = {
             "version": 3,
             "meta": {"title": "Docker"},
@@ -317,7 +317,7 @@ class RogueDashboardTests(unittest.TestCase):
         self.assertEqual(web["href"], "https://gpx.example.com")
         self.assertEqual(web["monitorUrl"], "http://rogueroute-gpx-web:9080/api/health")
         self.assertEqual(osrm["href"], "")
-        self.assertEqual(osrm["monitorUrl"], "http://rogueroute-gpx-osrm:5000/")
+        self.assertEqual(osrm["monitorUrl"], "http://rogueroute-gpx-web:9080/api/health/osrm")
         self.assertEqual(manager["href"], "")
         self.assertEqual(manager["monitorUrl"], "http://rogueroute-gpx-manager:9090/health")
         self.assertTrue(all(item["icon"].startswith("/icons/rogueroute-") for item in (web, osrm, manager)))
@@ -361,7 +361,7 @@ class RogueDashboardTests(unittest.TestCase):
                 "Names": ["/running"],
                 "Image": "example/running:latest",
                 "State": "running",
-                "Status": "Up 1 minute",
+                "Status": "Up 1 minute (healthy)",
                 "Ports": [{"PrivatePort": 9080, "PublicPort": 9080, "Type": "tcp"}],
                 "Labels": {"com.docker.compose.project": "routes", "unrelated.secret": "discard"},
                 "NetworkSettings": {"Networks": {"rogueroute-gpx": {}, "media-net": {}}},
@@ -370,7 +370,36 @@ class RogueDashboardTests(unittest.TestCase):
         containers = dashboard_app.normalise_containers(raw)
         self.assertEqual([item["name"] for item in containers], ["running", "stopped"])
         self.assertEqual(containers[0]["networks"], ["media-net", "rogueroute-gpx"])
+        self.assertEqual(containers[0]["health"], "healthy")
+        self.assertEqual(containers[1]["health"], "stopped")
         self.assertNotIn("unrelated.secret", containers[0]["labels"])
+
+    def test_native_container_health_remains_authoritative_when_private_probe_network_is_missing(self):
+        item = {
+            "id": "routes",
+            "containerName": "rogueroute-gpx-web",
+            "monitorUrl": "http://127.0.0.1:1/api/health",
+        }
+        result = dashboard_app.health_check(item, {
+            "rogueroute-gpx-web": {"state": "running", "health": "healthy"},
+        })
+        self.assertEqual(result["state"], "online")
+        self.assertEqual(result["probeState"], "offline")
+        self.assertEqual(result["source"], "docker")
+        self.assertIn("not reachable", result["message"])
+
+    def test_unhealthy_container_is_reported_offline(self):
+        item = {
+            "id": "osrm",
+            "containerName": "rogueroute-gpx-osrm",
+            "monitorUrl": "http://127.0.0.1:1/api/health/osrm",
+        }
+        result = dashboard_app.health_check(item, {
+            "rogueroute-gpx-osrm": {"state": "running", "health": "unhealthy"},
+        })
+        self.assertEqual(result["state"], "offline")
+        self.assertEqual(result["source"], "docker")
+        self.assertIn("failing", result["message"])
 
     def test_docker_stats_are_normalised_without_exposing_raw_engine_data(self):
         stats = dashboard_app.normalise_container_stats({

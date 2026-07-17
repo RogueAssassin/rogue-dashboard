@@ -8,7 +8,7 @@ from homepage_yaml import loads
 
 
 DEFAULT_DASHBOARD = {
-    "version": 6,
+    "version": 7,
     "meta": {
         "title": "My Docker Dashboard",
         "subtitle": "Everything running at home, in one friendly place",

@@ -263,7 +263,7 @@ function renderDashboard() {
           <div class="mini-stat"><span>⌁</span><div><strong id="load-count">—</strong><span id="uptime-count">System load</span></div></div>
         </section>
         <div class="result-count" id="result-count"></div><div class="groups" id="groups"></div>
-        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "1.0.0")}</strong></span><span>Local-first · Docker-powered</span></footer>
+        <footer class="page-footer"><span>Rogue Dashboard <strong>v${escapeHtml(state.bootstrap?.version || "1.0.1")}</strong></span><span>Local-first · Docker-powered</span></footer>
       </main>
       ${state.editor ? editorMarkup() : ""}
     </div>`;
@@ -321,7 +321,8 @@ function cardMarkup(item, groupIndex, itemIndex, groupKind) {
   const statusState = status?.state || "unknown";
   const href = safeUrl(item.href);
   const iconUrl = iconFor(item);
-  const statusMarkup = item.statusStyle !== "none" && item.monitorUrl ? `<span class="status ${statusState} ${item.statusStyle === "badge" ? "badge" : ""}">${item.statusStyle === "badge" ? escapeHtml(statusState) : ""}</span>` : "";
+  const statusTitle = status?.message || (statusState === "unknown" ? "Waiting for health status" : statusState);
+  const statusMarkup = item.statusStyle !== "none" && item.monitorUrl ? `<span class="status ${statusState} ${item.statusStyle === "badge" ? "badge" : ""}" title="${escapeHtml(statusTitle)}">${item.statusStyle === "badge" ? escapeHtml(statusState) : ""}</span>` : "";
   const latency = Number.isFinite(widget?.latencyMs) ? widget.latencyMs : status?.latencyMs;
   const latencyMarkup = state.draft.meta.showLatency && Number.isFinite(latency) ? `<span class="connection-latency ${widget?.state === "error" || statusState === "offline" ? "failed" : ""}">${latency} ms</span>` : "";
   return `<article class="service-card ${groupKind === "bookmarks" || item.type === "bookmark" ? "bookmark-card" : ""} ${state.editor ? "editable" : ""} ${widget?.state === "ok" ? "has-widget" : ""}" data-group="${groupIndex}" data-item="${itemIndex}" draggable="${state.editor}">${state.editor ? `<span class="drag-handle">⋮⋮</span>` : ""}${latencyMarkup}<a ${href ? `href="${href}" target="_blank" rel="noreferrer"` : ""}><div class="service-main"><div class="service-icon">${iconUrl ? `<img src="${iconUrl}" alt="">` : `<span>${escapeHtml(initials(item.name))}</span>`}</div><div class="service-copy"><div class="service-name"><strong>${escapeHtml(item.name)}</strong><span>${href ? "↗" : ""}</span></div><p>${escapeHtml(item.description || (item.type === "bookmark" ? "Bookmark" : "Open service"))}</p></div>${statusMarkup}</div>${widgetCardMarkup(item, widget)}</a>${state.editor ? `<button class="card-edit" data-group="${groupIndex}" data-item="${itemIndex}" aria-label="Edit ${escapeHtml(item.name)}">✎</button>` : ""}</article>`;
@@ -352,7 +353,7 @@ function connectionDiagnosticsMarkup() {
     const latency = Number.isFinite(live?.latencyMs) ? live.latencyMs : probe?.latencyMs;
     const loadedEnvironment = (live?.environment || []).filter(entry => entry.loaded).map(entry => entry.name);
     const environmentDetail = loadedEnvironment.length ? ` · .env loaded: ${loadedEnvironment.join(", ")}` : "";
-    const detail = live?.missingRefs?.length ? `Missing ${live.missingRefs.join(", ")}` : `${live?.message || (live?.state === "ok" ? `${live.metrics.length} API metrics responding` : probe?.state === "online" ? "Container endpoint responding" : "Waiting for connection test")}${environmentDetail}`;
+    const detail = live?.missingRefs?.length ? `Missing ${live.missingRefs.join(", ")}` : `${live?.message || (live?.state === "ok" ? `${live.metrics.length} API metrics responding` : probe?.message || (probe?.state === "online" ? "Container endpoint responding" : "Waiting for connection test"))}${environmentDetail}`;
     const endpoint = item.widget?.url || item.monitorUrl || "No private URL";
     const action = stateName === "ok" || stateName === "online" ? "Connected" : stateName === "configuration_required" ? "Configure" : stateName === "error" || stateName === "offline" ? "Check" : "Pending";
     return `<div class="widget-diagnostic"><span class="widget-state-dot ${escapeHtml(stateName)}"></span><div><strong>${escapeHtml(item.name)}</strong><small title="${escapeHtml(`${endpoint} · ${detail}`)}">${escapeHtml(item.widget?.type || "health probe")} · ${escapeHtml(endpoint)} · ${escapeHtml(detail)}</small></div><span>${Number.isFinite(latency) ? `${latency} ms · ` : ""}${action}</span></div>`;
@@ -661,10 +662,12 @@ async function discoverDocker() {
     const result = await request("/api/docker/containers");
     list.innerHTML = result.containers.map((container, index) => {
       const added = isContainerAdded(container);
+      const runtimeHealthy = container.state === "running" && !["unhealthy", "starting"].includes(container.health);
       const publicPort = container.ports.find(port => port.publicPort)?.publicPort || "no public port";
       const networks = container.networks?.length ? container.networks.join(", ") : "no network data";
       const stats = container.stats?.available ? `CPU ${container.stats.cpuPercent.toFixed(1)}% · RAM ${formatBytes(container.stats.memoryUsed)} · ↓ ${formatBytes(container.stats.networkRx)} ↑ ${formatBytes(container.stats.networkTx)}` : container.state === "running" ? "Runtime metrics unavailable" : container.status;
-      return `<div class="container-row"><span class="container-state ${container.state === "running" ? "online" : ""}"></span><div><strong>${escapeHtml(container.name)}</strong><span>${escapeHtml(container.image)} · ${publicPort}</span><span class="container-runtime">${escapeHtml(stats)}</span><span class="container-networks">Networks: ${escapeHtml(networks)}</span></div><div class="container-actions"><button class="icon-button ${added ? "is-added" : ""}" data-container="${index}" title="${added ? "Card already added" : "Add card"}" ${added ? "disabled" : ""}>${added ? "✓" : "+"}</button>${container.labels["rogue.dashboard.protected"] === "true" ? `<span class="protected-chip">Protected</span>` : container.state === "running" ? `<button class="icon-button" data-docker-action="restart" data-index="${index}" title="Restart">↻</button><button class="icon-button danger" data-docker-action="stop" data-index="${index}" title="Stop">■</button>` : `<button class="icon-button" data-docker-action="start" data-index="${index}" title="Start">▶</button>`}</div></div>`;
+      const health = container.health && container.health !== "none" ? ` · ${container.health}` : "";
+      return `<div class="container-row"><span class="container-state ${runtimeHealthy ? "online" : ""}" title="${escapeHtml(`${container.state}${health}`)}"></span><div><strong>${escapeHtml(container.name)}</strong><span>${escapeHtml(container.image)} · ${publicPort}${escapeHtml(health)}</span><span class="container-runtime">${escapeHtml(stats)}</span><span class="container-networks">Networks: ${escapeHtml(networks)}</span></div><div class="container-actions"><button class="icon-button ${added ? "is-added" : ""}" data-container="${index}" title="${added ? "Card already added" : "Add card"}" ${added ? "disabled" : ""}>${added ? "✓" : "+"}</button>${container.labels["rogue.dashboard.protected"] === "true" ? `<span class="protected-chip">Protected</span>` : container.state === "running" ? `<button class="icon-button" data-docker-action="restart" data-index="${index}" title="Restart">↻</button><button class="icon-button danger" data-docker-action="stop" data-index="${index}" title="Stop">■</button>` : `<button class="icon-button" data-docker-action="start" data-index="${index}" title="Start">▶</button>`}</div></div>`;
     }).join("") || `<div class="notice info">No containers found.</div>`;
     list.querySelectorAll("[data-container]").forEach(button => button.onclick = () => addContainer(result.containers[Number(button.dataset.container)]));
     list.querySelectorAll("[data-docker-action]").forEach(button => button.onclick = () => runDockerAction(result.containers[Number(button.dataset.index)], button.dataset.dockerAction));
@@ -698,8 +701,8 @@ function addContainer(container) {
   const presets = {
     rogueroutegpx: { name: "RogueRoute GPX", href: publicRogueRouteUrl || (port?.publicPort ? `${location.protocol}//${location.hostname}:${port.publicPort}` : ""), monitorUrl: "http://rogueroute-gpx-web:9080/api/health", description: "Route generator", icon: "/icons/rogueroute-gpx.svg" },
     rogueroutegpxweb: { name: "RogueRoute GPX", href: publicRogueRouteUrl || (port?.publicPort ? `${location.protocol}//${location.hostname}:${port.publicPort}` : ""), monitorUrl: "http://rogueroute-gpx-web:9080/api/health", description: "Route generator", icon: "/icons/rogueroute-gpx.svg" },
-    roguerouteosrm: { name: "RogueRoute OSRM", href: "", monitorUrl: "http://rogueroute-gpx-osrm:5000/", description: "Local route engine", icon: "/icons/rogueroute-osrm.svg" },
-    rogueroutegpxosrm: { name: "RogueRoute OSRM", href: "", monitorUrl: "http://rogueroute-gpx-osrm:5000/", description: "Local route engine", icon: "/icons/rogueroute-osrm.svg" },
+    roguerouteosrm: { name: "RogueRoute OSRM", href: "", monitorUrl: "http://rogueroute-gpx-web:9080/api/health/osrm", description: "Local route engine", icon: "/icons/rogueroute-osrm.svg" },
+    rogueroutegpxosrm: { name: "RogueRoute OSRM", href: "", monitorUrl: "http://rogueroute-gpx-web:9080/api/health/osrm", description: "Local route engine", icon: "/icons/rogueroute-osrm.svg" },
     rogueroutemanager: { name: "RogueRoute Manager", href: "", monitorUrl: "http://rogueroute-gpx-manager:9090/health", description: "Private region manager", icon: "/icons/rogueroute-manager.svg" },
     rogueroutegpxmanager: { name: "RogueRoute Manager", href: "", monitorUrl: "http://rogueroute-gpx-manager:9090/health", description: "Private region manager", icon: "/icons/rogueroute-manager.svg" },
   };

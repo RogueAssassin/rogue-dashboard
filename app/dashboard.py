@@ -33,7 +33,7 @@ from importer import DEFAULT_DASHBOARD, import_homepage, suggested_widget
 from integrations import SUPPORTED_WIDGETS, collect_widget
 
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 PORT = int(os.environ.get("PORT", "8080"))
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8081"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -60,6 +60,9 @@ MAX_ARCHIVE_ENTRIES = 100
 MAX_ARCHIVE_UNCOMPRESSED = 5_000_000
 MAX_CUSTOM_ASSET = 10_000_000
 CUSTOM_ASSET_SUFFIXES = {".avif", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
+ROGUEROUTE_WEB_HEALTH_URL = "http://rogueroute-gpx-web:9080/api/health"
+ROGUEROUTE_OSRM_HEALTH_URL = "http://rogueroute-gpx-web:9080/api/health/osrm"
+ROGUEROUTE_MANAGER_HEALTH_URL = "http://rogueroute-gpx-manager:9090/health"
 
 
 class SetupCompleted(Exception):
@@ -101,7 +104,7 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", accent_secondary):
         accent_secondary = "#00e5ff"
     result: dict[str, Any] = {
-        "version": 6,
+        "version": 7,
         "meta": {
             "title": text(raw_meta.get("title"), 100, "My Docker Dashboard").strip() or "My Docker Dashboard",
             "subtitle": text(raw_meta.get("subtitle"), 180, "Your self-hosted command centre"),
@@ -217,33 +220,34 @@ def validate_dashboard(raw: Any) -> dict[str, Any]:
                 if suggested:
                     item["widget"] = suggested
             if not (stored_version < 3 and re.sub(r"[^a-z0-9]+", "", item["name"].lower()) == "homepage"):
-                if stored_version < 5:
+                if stored_version < 7:
                     identity = re.sub(r"[^a-z0-9]+", "", item["name"].lower())
-                    if identity in ("rogueroutegpx", "rogueroutegpxweb"):
+                    container_name = item.get("containerName", "")
+                    if identity in ("rogueroutegpx", "rogueroutegpxweb") or container_name == "rogueroute-gpx-web":
                         item.update(
                             name="RogueRoute GPX",
                             containerName="rogueroute-gpx-web",
-                            monitorUrl="http://rogueroute-gpx-web:9080/api/health",
+                            monitorUrl=ROGUEROUTE_WEB_HEALTH_URL,
                             description="Route generator",
                             icon="/icons/rogueroute-gpx.svg",
                         )
                         if ROGUEROUTE_PUBLIC_URL:
                             item["href"] = ROGUEROUTE_PUBLIC_URL
-                    elif identity in ("roguerouteosrm", "rogueroutegpxosrm"):
+                    elif identity in ("roguerouteosrm", "rogueroutegpxosrm") or container_name == "rogueroute-gpx-osrm":
                         item.update(
                             name="RogueRoute OSRM",
                             containerName="rogueroute-gpx-osrm",
                             href="",
-                            monitorUrl="http://rogueroute-gpx-osrm:5000/",
+                            monitorUrl=ROGUEROUTE_OSRM_HEALTH_URL,
                             description="Local route engine",
                             icon="/icons/rogueroute-osrm.svg",
                         )
-                    elif identity in ("rogueroutemanager", "rogueroutegpxmanager"):
+                    elif identity in ("rogueroutemanager", "rogueroutegpxmanager") or container_name == "rogueroute-gpx-manager":
                         item.update(
                             name="RogueRoute Manager",
                             containerName="rogueroute-gpx-manager",
                             href="",
-                            monitorUrl="http://rogueroute-gpx-manager:9090/health",
+                            monitorUrl=ROGUEROUTE_MANAGER_HEALTH_URL,
                             description="Private region manager",
                             icon="/icons/rogueroute-manager.svg",
                         )
@@ -525,13 +529,27 @@ def normalise_containers(raw: Any) -> list[dict[str, Any]]:
             for key, value in (container.get("Labels") or {}).items()
             if key in exact_labels or key.startswith("rogue.dashboard.")
         }
+        state = str(container.get("State", "unknown"))
+        status = str(container.get("Status", "unknown"))
+        status_lower = status.lower()
+        if "(healthy)" in status_lower:
+            health = "healthy"
+        elif "(unhealthy)" in status_lower:
+            health = "unhealthy"
+        elif "(health: starting)" in status_lower:
+            health = "starting"
+        elif state == "running":
+            health = "none"
+        else:
+            health = "stopped"
         containers.append(
             {
                 "id": str(container.get("Id", ""))[:12],
                 "name": ((container.get("Names") or ["Unnamed container"])[0]).lstrip("/"),
                 "image": container.get("Image", "unknown"),
-                "state": container.get("State", "unknown"),
-                "status": container.get("Status", "unknown"),
+                "state": state,
+                "status": status,
+                "health": health,
                 "ports": [
                     {"privatePort": port.get("PrivatePort", 0), "publicPort": port.get("PublicPort"), "type": port.get("Type", "tcp")}
                     for port in container.get("Ports") or []
@@ -600,29 +618,83 @@ def action_through_agent(container_id: str, action: str) -> None:
         return
 
 
-def health_check(item: dict[str, Any]) -> dict[str, Any]:
+def health_check(item: dict[str, Any], containers_by_name: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     checked_at = utc_now()
     url = item.get("monitorUrl", "")
     if not isinstance(url, str) or urlparse(url).scheme not in ("http", "https"):
         return {"itemId": item.get("id", ""), "state": "unknown", "checkedAt": checked_at}
     started = time.monotonic()
     status: int | None = None
+    probe_error: str | None = None
     try:
         request = Request(url, method="HEAD", headers={"User-Agent": f"Rogue-Dashboard/{VERSION}"})
         with urlopen(request, timeout=4) as response:
             status = response.status
-        state = "online" if status < 500 else "offline"
+        probe_state = "online" if status < 500 else "offline"
     except HTTPError as error:
         status = error.code
-        state = "online" if status < 500 else "offline"
+        if status in (405, 501):
+            try:
+                request = Request(url, method="GET", headers={"User-Agent": f"Rogue-Dashboard/{VERSION}"})
+                with urlopen(request, timeout=4) as response:
+                    status = response.status
+                probe_state = "online" if status < 500 else "offline"
+            except HTTPError as get_error:
+                status = get_error.code
+                probe_state = "online" if status < 500 else "offline"
+            except (URLError, TimeoutError, ValueError):
+                status = None
+                probe_state = "offline"
+                probe_error = "Private endpoint is unreachable from the dashboard network"
+        else:
+            probe_state = "online" if status < 500 else "offline"
     except (URLError, TimeoutError, ValueError):
+        probe_state = "offline"
+        probe_error = "Private endpoint is unreachable from the dashboard network"
+
+    container_name = item.get("containerName", "")
+    container = (containers_by_name or {}).get(container_name) if isinstance(container_name, str) else None
+    container_state = container.get("state") if container else None
+    container_health = container.get("health") if container else None
+    if container_state and container_state != "running":
         state = "offline"
+        message = f"Container is {container_state}"
+        source = "docker"
+    elif container_health == "unhealthy":
+        state = "offline"
+        message = "Docker health check is failing"
+        source = "docker"
+    elif container_health == "starting":
+        state = "unknown"
+        message = "Docker health check is still starting"
+        source = "docker"
+    elif probe_state == "offline" and status is not None:
+        state = "offline"
+        message = f"Health endpoint returned HTTP {status}"
+        source = "endpoint"
+    elif container_health == "healthy":
+        state = "online"
+        message = "Container healthy and endpoint responding" if probe_state == "online" else "Container healthy; private endpoint is not reachable from the dashboard network"
+        source = "docker+endpoint" if probe_state == "online" else "docker"
+    else:
+        state = probe_state
+        message = "Endpoint responding" if probe_state == "online" else probe_error or "Endpoint is offline"
+        source = "endpoint"
     result: dict[str, Any] = {
         "itemId": item.get("id", ""),
         "state": state,
+        "source": source,
+        "message": message,
+        "probeState": probe_state,
         "latencyMs": round((time.monotonic() - started) * 1000),
         "checkedAt": checked_at,
     }
+    if container_state:
+        result["containerState"] = container_state
+    if container_health:
+        result["containerHealth"] = container_health
+    if probe_error:
+        result["probeError"] = probe_error
     if status is not None:
         result["status"] = status
     return result
@@ -800,8 +872,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     results = HEALTH_CACHE[1]
                 else:
                     items = [item for group in DB.dashboard()["groups"] for item in group["items"] if item.get("monitorUrl")]
+                    try:
+                        containers_by_name = {container["name"]: container for container in containers_from_agent()}
+                    except Exception:
+                        containers_by_name = {}
                     with ThreadPoolExecutor(max_workers=8) as pool:
-                        results = list(pool.map(health_check, items))
+                        results = list(pool.map(lambda item: health_check(item, containers_by_name), items))
                     HEALTH_CACHE = (time.time() + 15, results)
             self.json_response(results)
         elif path == "/api/widgets":

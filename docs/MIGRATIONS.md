@@ -8,6 +8,7 @@ Rogue Dashboard migrations are forward-only, automatic and backup-first. The upg
 | --- | --- | --- |
 | 0.6.x | 0.7.x | No database change; Docker metrics and optional backup retention become available. |
 | 0.7.x | 0.8.x | Dashboard schema 6 creates a Home page and assigns existing groups to it. |
+| 1.0.0 | 1.0.1 | Dashboard schema 7 migrates known RogueRoute cards to stable Web and OSRM health endpoints. |
 | 0.8.x | 1.0.x | Session timestamps and the bounded action-audit table are added in place. |
 | 0.6.x or newer | 1.0.x | All intermediate migrations are applied during validation/startup. |
 

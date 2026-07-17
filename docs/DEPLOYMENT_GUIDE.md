@@ -32,7 +32,7 @@ Do not replace `.env` with `.env.example`, delete `data/`, or run `docker compos
 
 ## Publish staged releases with GitHub Desktop
 
-Use this sequence when uploading the prepared 0.7.0, 0.8.0 and 1.0.0 source folders.
+Use this sequence when uploading the prepared 0.7.0, 0.8.0, 1.0.0 and 1.0.1 source folders.
 
 1. In GitHub Desktop, clone `RogueAssassin/rogue-dashboard` and select `main`.
 2. Copy the contents of the prepared `rogue-dashboard-v0.7.0` folder over the clone. Do not copy a real `.env`, `data`, `custom` artwork or `backups` directory.
@@ -42,6 +42,7 @@ Use this sequence when uploading the prepared 0.7.0, 0.8.0 and 1.0.0 source fold
 6. Verify the package contains `0.7.0`, `0.7` and `latest` tags.
 7. Repeat with the prepared 0.8.0 folder and tag `v0.8.0` only after 0.7 succeeds.
 8. Repeat with the prepared 1.0.0 folder and tag `v1.0.0` only after 0.8 succeeds.
+9. Repeat with the prepared 1.0.1 folder and tag `v1.0.1` only after 1.0.0 succeeds.
 
 Do not create all three tags first: the tag is the release gate and updates `latest`.
 
@@ -50,7 +51,7 @@ Do not create all three tags first: the tag is the release gate and updates `lat
 After its GHCR tag finishes publishing, pin the version in `.env` if desired:
 
 ```dotenv
-RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:1.0.0
+RGDASH_IMAGE=ghcr.io/rogueassassin/rogue-dashboard:1.0.1
 ```
 
 Then run `./upgrade.sh`. Verify `docker compose ps`, login, Docker discovery, service widgets, pages and **Customise → Admin**.
